@@ -171,7 +171,8 @@ private:
     std::vector <u_short> &obtener_movimientos_peon_blanco(std::vector<u_short> &movimientos);
 
     void obtener_movimientos_torre_negra(std::vector<u_short> &movimientos, U64 bitboard);
-
+    U64 bitboard_movimientos_dama_negra(U64 bitboard);
+    U64 bitboard_movimientos_torre_negra(U64 bitboard);
     void obtener_movimientos_alfil_negro(std::vector<u_short> &movimientos, U64 bitboard);
 
     void obtener_movimientos_dama_negra(std::vector<u_short> &movimientos, U64 bitboard);
@@ -181,5 +182,21 @@ private:
     std::vector<u_short> &obtener_movimientos_rey_negro(std::vector<u_short> &movimientos);
 
     std::vector<u_short> &obtener_movimientos_peon_negro(std::vector<u_short> &movimientos);
+
+    U64 bitboard_movimientos_alfil_negro(U64 bitboard);
+
+    U64 bitboard_movimientos_caballo_negro(U64 bitboard) const;
+
+    U64 bitboard_movimientos_peon_negro(U64 bitboard);
+
+    U64 bitboard_movimientos_dama_blanca(U64 bitboard);
+
+    U64 bitboard_movimientos_torre_blanca(U64 bitboard);
+
+    U64 bitboard_movimientos_alfil_blanco(U64 bitboard);
+
+    U64 bitboard_movimientos_caballo_blanco(U64 bitboard) const;
+
+    U64 bitboard_movimientos_peon_blanco(U64 bitboard);
 };
 
