@@ -13,99 +13,7 @@ Motor::Motor() {
 };
 
 bool Motor:: endgame = false;
-u_short Motor::mejorJugada(Tablero* tablero, int profundidad, u_short jugada) {
- /*   vector<u_short> ganadoras;
 
-    if(!tablaInicializada){
-        TT->asignarTablero(tablero);
-        tablaInicializada = true;
-
-    }
-
-    if(TT->obtenerEntrada().jugada != 0 && TT->obtenerEntrada().profundidad >= profundidad
-    && TT->obtenerEntrada().clave == tablero->zobristKey()){
-        return TT->obtenerMovimientoGuardado();
-    }
-   float evalFi = -999999999;
-    vector<u_short> movimientos = tablero->generar_movimientos(tablero->_turno);
-
-// Crea un vector de pares (movimiento, prioridad)
-    vector<pair<u_short, float>> movimientosConPrioridad;
-
-// Asigna prioridades a los movimientos basándose en la tabla de transposición
-    // Asigna prioridades a los movimientos basándose en la tabla de transposición
-    for (auto &movimiento : movimientos) {
-        if(tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento), operaciones_bit::getTipoDeJugada(movimiento))) {
-*//*
-            TablaTrans::entrada e = TT->obtenerEntrada();
-*//*
-            float prioridad = 0.0;
-            if (e.jugada != 0) {
-                // Asigna la evaluación como prioridad al movimiento
-                prioridad = (tablero->_turno == 1) ? -e.valor : e.valor;
-                // Multiplica la evaluación por un factor grande y suma el tipo de jugada
-                prioridad = prioridad * 1000 + operaciones_bit::getTipoDeJugada(movimiento);
-            }
-            movimientosConPrioridad.push_back(make_pair(movimiento, prioridad));
-            tablero->deshacerMovimiento();
-        }
-    }
-
-    if(jugada != 0){
-        tablero->moverPieza(operaciones_bit::getSalida(jugada),
-                            operaciones_bit::getLlegada(jugada),
-                            operaciones_bit::getTipoDeJugada(jugada));
-        u_short posBestMove;
-        evalFi = -negamax(tablero, profundidad, -999999999, 999999999, posBestMove);
-        tablero->deshacerMovimiento();
-        ganadoras.push_back(jugada);
-    }
-    u_short mejorJugada = 0;
-    for (auto &movimiento: movimientos) {
-
-        if(tablero->moverPieza(operaciones_bit::getSalida(movimiento),
-                               operaciones_bit::getLlegada(movimiento),
-                               operaciones_bit::getTipoDeJugada(movimiento))) {
-            u_short posBestMove;
-            float eval = -negamax(tablero, profundidad, -999999999, 999999999, posBestMove);
-
-            tablero->deshacerMovimiento();
-            if (eval > evalFi) {
-                evalFi = eval;
-                ganadoras.clear();
-
-                ganadoras.push_back(operaciones_bit::crearJugada(operaciones_bit::getSalida(movimiento),
-                                                                 operaciones_bit::getLlegada(movimiento),
-                                                                 operaciones_bit::getTipoDeJugada(movimiento)));
-            } else if (eval == evalFi) {
-                ganadoras.push_back(operaciones_bit::crearJugada(operaciones_bit::getSalida(movimiento),
-                                                                 operaciones_bit::getLlegada(movimiento),
-                                                                 operaciones_bit::getTipoDeJugada(movimiento)));
-            }
-
-        }
-    }
-
-
-
-    int tamañoDeLista = ganadoras.size();
-    int indice = rand() % tamañoDeLista;
-    int i = 0;
-    u_short ganador;
-    for (auto &movimiento: ganadoras) {
-        if (i == indice) {
-
-            ganador =  movimiento;
-            break;
-        }
-        i++;
-    }
-
-
-
-
-    return ganador;*/
-}
 
 
 
@@ -122,15 +30,9 @@ float Motor::valoracion(Tablero *tablero) {
     } else {*/
         // Paso 3: Si la diferencia de material no es mayor que el umbral, continuar con el resto de los criterios de evaluación
         evaluacion += diferenciaMaterial;
-/*
-        */
-/*evaluacion += valoracionMovilidad(tablero);*/
 
-        evaluacion += seguridadDelRey(tablero);
         evaluacion += calcularOcupacion(tablero, tablero->_turno);
-/*
-        evaluacion += 0.6*controlDeCentro(tablero, tablero->_turno);
-*/
+
 
         evaluacion += calcularDesarrollo(tablero, tablero->_turno);
 
@@ -871,8 +773,7 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
                     u_short posBestMove2;
                     eval = -negamax(tablero, profundidad + aumentoProfundidad - 2, -(alfa + 1), -alfa, posBestMove2);
                 } else {
-                    eval = alfa + 1;  // Hack to ensure that full-depth search
-                    // is done.
+                    eval = alfa + 1;
                 }
                     if (eval > alfa) {
                         u_short posBestMove3;

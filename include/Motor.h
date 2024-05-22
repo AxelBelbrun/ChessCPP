@@ -22,7 +22,6 @@ public:
     int nodos = 0;
 
     float quiescence(Tablero* tablero, float alfa, float beta);
-    u_short mejorJugada(Tablero* tablero, int profundidad, u_short jugada);
      float valoracion(Tablero* tablero);
     static float valoracionMaterial(Tablero* tablero);
     U64 perft(int profundidad, Tablero* tablero);

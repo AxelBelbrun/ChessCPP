@@ -34,9 +34,10 @@ void ProtocoloUCI:: comunicacionUCI() {
         } else if (input.substr(0,2) ==  "go") {
             inputGo();
         } else if(input.substr(0,4) == "quit"){
+            delete motor->TT;
+
             delete motor;
             delete tablero;
-            delete motor->TT;
             exit(0);
         }
         else {
@@ -267,7 +268,7 @@ void ProtocoloUCI:: inputGo() {
     u_short jugada;
     //Iterative deepening
     int a, b;
-    for(int i = 1; i < 8; i++){
+    for(int i = 1; i < 9; i++){
         if(i == 1){
             jugada = 0;
         }

@@ -8,7 +8,11 @@
 #include <vector>
 #include "constantes.h"
 #include <cstdio>
+#include "Pieza.h"
 
+class Caballo;
+class Rey;
+class Peon;
 
 enum casillas {
     h1 = 1, g1, f1, e1, d1, c1, b1, a1,
@@ -151,7 +155,9 @@ public:
     bool chequearEnroqueLargo();
     bool enrocar(u_short jugada);
     void moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
-
+    Caballo* caballo;
+    Rey* rey;
+    Peon* peon;
 
 
 
@@ -173,6 +179,8 @@ private:
     void obtener_movimientos_torre_negra(std::vector<u_short> &movimientos, U64 bitboard);
     U64 bitboard_movimientos_dama_negra(U64 bitboard);
     U64 bitboard_movimientos_torre_negra(U64 bitboard);
+    U64 bitboard_movimientos_rey_negro(U64 bitboard);
+    U64 bitboard_movimientos_rey_blanco(U64 bitboard);
     void obtener_movimientos_alfil_negro(std::vector<u_short> &movimientos, U64 bitboard);
 
     void obtener_movimientos_dama_negra(std::vector<u_short> &movimientos, U64 bitboard);

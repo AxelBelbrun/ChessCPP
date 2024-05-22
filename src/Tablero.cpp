@@ -279,23 +279,21 @@ Tablero::Tablero(std::string posicionASetear) {
         delete torre;
         delete alfil;
 
-        auto caballo = new Caballo();
-        auto rey = new Rey();
-        auto peon = new Peon();
+        caballo = new Caballo();
+        rey = new Rey();
+        peon = new Peon();
         U64 bitboardCaballo = operaciones_bit::setBit(0L, i + 1, 1);
         U64 movimientosCaballo = caballo->generar_movimientos_legales(bitboardCaballo, 0, 0, 0);
         movimientosDeCaballo[i] = movimientosCaballo;
         U64 bitboardRey = operaciones_bit::setBit(0L, i + 1, 1);
-        U64 movimientosRey = rey->generar_movimientos_legales(bitboardRey, 0, 0, 0);
+        U64 movimientosRey = rey -> generar_movimientos_legales(bitboardRey, 0, 0, 0);
         movimientosDeRey[i] = movimientosRey;
         U64 bitboardPeon = operaciones_bit::setBit(0L, i + 1, 1);
         U64 movimientosPeonBlanco = peon->generar_movimientos_legales(bitboardPeon, 0, 0, 0);
         movimientosDePeon[i][0] = movimientosPeonBlanco;
         U64 movimientosPeonNegro = peon->generar_movimientos_legales(bitboardPeon, 0, 0, 1);
         movimientosDePeon[i][1] = movimientosPeonNegro;
-        delete caballo;
-        delete rey;
-        delete peon;
+
 
 
     }
@@ -910,16 +908,13 @@ std::vector<u_short> Tablero::generar_movimientos(int turno) {
 
 vector<u_short> &Tablero::obtener_movimientos_peon_negro(
         vector<u_short> &movimientos) {//Movimientos de Perón... Mi general, cuánto valés!
-    auto peon = new Peon();
     peon->movimientos_legales(this, &movimientos, bitboards[11],
                               piezas_negras(),
                               piezas_blancas());
-    delete peon;
     return movimientos;
 }
 
 vector<u_short> &Tablero::obtener_movimientos_rey_negro(vector<u_short> &movimientos) {
-    auto rey = new Rey();
     //Movimientos de rey
     rey->movimientos_legales(this, &movimientos, bitboards[6], piezas_negras(), piezas_blancas());
     if (chequearEnroqueCorto()) {
@@ -928,15 +923,12 @@ vector<u_short> &Tablero::obtener_movimientos_rey_negro(vector<u_short> &movimie
     if (chequearEnroqueLargo()) {
         movimientos.push_back(operaciones_bit::crearJugada(60, 62, CASTLING));
     }
-    delete rey;
     return movimientos;
 }
 
 vector<u_short> &
 Tablero::obtener_movimientos_caballo_negro(vector<u_short> &movimientos) {//Movimientos de caballo
-    auto caballo = new Caballo();
     caballo->obtener_movimientos(this, &movimientos, bitboards[10], piezas_negras(), piezas_blancas());
-    delete caballo;
     return movimientos;
 }
 
@@ -1069,18 +1061,15 @@ void Tablero::obtener_movimientos_torre_negra(vector<u_short> &movimientos, U64 
 }
 
 vector<u_short> &Tablero::obtener_movimientos_peon_blanco(vector<u_short> &movimientos) {
-    auto peon = new Peon();
 
     //Generar movimientos de peón
     peon->movimientos_legales(this, &movimientos, bitboards[5],
                               piezas_blancas(),
                               piezas_negras());
-    delete peon;
     return movimientos;
 }
 
 vector<u_short> &Tablero::obtener_movimientos_rey_blanco(vector<u_short> &movimientos) {
-    auto rey = new Rey();
     //Generar movimientos de rey
     rey->movimientos_legales(this, &movimientos, bitboards[0], piezas_blancas(), piezas_negras());
     if (chequearEnroqueCorto()) {
@@ -1089,14 +1078,11 @@ vector<u_short> &Tablero::obtener_movimientos_rey_blanco(vector<u_short> &movimi
     if (chequearEnroqueLargo()) {
         movimientos.push_back(operaciones_bit::crearJugada(4, 6, CASTLING));
     }
-    delete rey;
     return movimientos;
 }
 
 vector<u_short> &Tablero::obtener_movimientos_caballo_blanco(vector<u_short> &movimientos) {
-    auto caballo = new Caballo();
     caballo->obtener_movimientos(this, &movimientos, bitboards[4], piezas_blancas(), piezas_negras());
-    delete caballo;
     return movimientos;
 }
 
@@ -1876,6 +1862,11 @@ bool Tablero::reyPropioEnJaque(int color) {
             return true;
         }
 
+        U64 movimientosReyNegro = bitboard_movimientos_rey_negro(bitboards[6]);
+        if((movimientosReyNegro & reyPropio) > 0){
+            return true;
+        }
+
     } else {
         U64 movimientosDamaBlanca = bitboard_movimientos_dama_blanca(bitboards[1]);
 
@@ -1908,10 +1899,31 @@ bool Tablero::reyPropioEnJaque(int color) {
             return true;
         }
 
+        U64 movimientosReyBlanco = bitboard_movimientos_rey_blanco(bitboards[0]);
+
+        if((movimientosReyBlanco & reyPropio) > 0){
+            return true;
+        }
+
 
     }
     return false;
 }
+
+U64 Tablero::bitboard_movimientos_rey_negro(U64 bitboard) {
+    U64 movimientosReyNegro = 0;
+    movimientosReyNegro |= rey -> generar_movimientos_legales(bitboard, piezas_negras(), piezas_blancas(), 1);
+    return movimientosReyNegro;
+
+}
+
+U64 Tablero::bitboard_movimientos_rey_blanco(U64 bitboard) {
+    U64 movimientosReyBlanco = 0;
+    movimientosReyBlanco |= rey -> generar_movimientos_legales(bitboard, piezas_blancas(), piezas_negras(), 1);
+    return movimientosReyBlanco;
+
+}
+
 
 U64 Tablero::bitboard_movimientos_peon_blanco(U64 bitboard) {
     U64 movimientosPeonBlanco = 0;
@@ -2013,119 +2025,15 @@ U64 Tablero::obtenerAttackMap(int color) {
 }
 
 U64 Tablero::obtenerAttackMapBlancas() {
-    U64 bitboardDeTorres = bitboards[2];
-    U64 bitboardDeAlfiles = bitboards[3];
-    U64 bitboardDeDamas = bitboards[1];
-    U64 bitboardDePeones = bitboards[5];
-    U64 bitboardDeCaballo = bitboards[4];
-    U64 movimientosPosibles = 0ULL;
-    while (bitboardDeTorres > 0) {
-        int casillaDeTorre = operaciones_bit::LSB(bitboardDeTorres);
-        U64 attackMaskTorre = constantes::attackMasksTorre[casillaDeTorre - 1];
-        U64 occupancyMask = attackMaskTorre & todas_las_piezas();
-        U64 key = occupancyMask * constantes::magicsParaTorre[casillaDeTorre - 1] >> (64 - 12);
-        U64 movimientosDePieza = movimientosDeTorre[casillaDeTorre - 1][key];
-        movimientosPosibles |= movimientosDePieza;
-    }
-    while (bitboardDeAlfiles > 0) {
-        int casillaDeAlfil = operaciones_bit::LSB(bitboardDeAlfiles);
-        U64 attackMaskAlfil = constantes::attackMasksAlfil[casillaDeAlfil - 1];
-        U64 occupancyMask = attackMaskAlfil & todas_las_piezas();
-        U64 key = occupancyMask * constantes::magicsParaAlfil[casillaDeAlfil - 1] >> (64 - 9);
-        U64 movimientosDePieza = movimientosDeAlfil[casillaDeAlfil - 1][key];
-        movimientosPosibles |= movimientosDePieza;
-    }
-    while (bitboardDeDamas > 0) {
-        int casillaDeDama = operaciones_bit::LSB(bitboardDeDamas);
-        U64 attackMaskTorre = constantes::attackMasksTorre[casillaDeDama - 1];
-        U64 attackMaskAlfil = constantes::attackMasksAlfil[casillaDeDama - 1];
-        U64 occupancyMask = attackMaskTorre & todas_las_piezas();
-        U64 key = occupancyMask * constantes::magicsParaTorre[casillaDeDama - 1] >> (64 - 12);
-        U64 movimientosDePieza = movimientosDeTorre[casillaDeDama - 1][key];
-        occupancyMask = attackMaskAlfil & todas_las_piezas();
-        key = occupancyMask * constantes::magicsParaAlfil[casillaDeDama - 1] >> (64 - 9);
-        movimientosDePieza |= movimientosDeAlfil[casillaDeDama - 1][key];
-        movimientosPosibles |= movimientosDePieza;
-    }
-    auto peon = new Peon();
-    while (bitboardDePeones > 0) {
-        int casillaDePeon = operaciones_bit::LSB(bitboardDePeones);
-
-        U64 movimientosDePieza = peon->generar_movimientos_legales(casillaDePeon, piezas_blancas(), piezas_negras(), 0);
-        movimientosPosibles |= movimientosDePieza;
-
-    }
-    delete peon;
-    auto caballo = new Caballo();
-
-    while (bitboardDeCaballo > 0) {
-        int casillaDeCaballo = operaciones_bit::LSB(bitboardDeCaballo);
-        U64 bitboardCaballo = operaciones_bit::setBit(0L, casillaDeCaballo, 1);
-        U64 movimientosDePieza = caballo->generar_movimientos_legales(bitboardCaballo, piezas_blancas(),
-                                                                      piezas_negras(), 0);
-        movimientosPosibles |= movimientosDePieza;
-    }
-    delete caballo;
-
-    return movimientosPosibles;
+    return bitboard_movimientos_rey_blanco(bitboards[0]) | bitboard_movimientos_dama_blanca(bitboards[1]) |
+           bitboard_movimientos_torre_blanca(bitboards[2]) | bitboard_movimientos_alfil_blanco(bitboards[3]) |
+           bitboard_movimientos_caballo_blanco(bitboards[4]) | bitboard_movimientos_peon_blanco(bitboards[5]);
 }
 
 U64 Tablero::obtenerAttackMapNegras() {
-
-    U64 bitboardDeTorres = bitboards[8];
-    U64 bitboardDeAlfiles = bitboards[9];
-    U64 bitboardDeDamas = bitboards[7];
-    U64 bitboardDePeones = bitboards[11];
-    U64 bitboardDeCaballo = bitboards[10];
-    U64 movimientosPosibles = 0ULL;
-    while (bitboardDeTorres > 0) {
-        int casillaDeTorre = operaciones_bit::LSB(bitboardDeTorres);
-        U64 attackMaskTorre = constantes::attackMasksTorre[casillaDeTorre - 1];
-        U64 occupancyMask = attackMaskTorre & todas_las_piezas();
-        U64 key = occupancyMask * constantes::magicsParaTorre[casillaDeTorre - 1] >> (64 - 12);
-        U64 movimientosDePieza = movimientosDeTorre[casillaDeTorre - 1][key];
-        movimientosPosibles |= movimientosDePieza;
-    }
-    while (bitboardDeAlfiles > 0) {
-        int casillaDeAlfil = operaciones_bit::LSB(bitboardDeAlfiles);
-        U64 attackMaskAlfil = constantes::attackMasksAlfil[casillaDeAlfil - 1];
-        U64 occupancyMask = attackMaskAlfil & todas_las_piezas();
-        U64 key = occupancyMask * constantes::magicsParaAlfil[casillaDeAlfil - 1] >> (64 - 9);
-        U64 movimientosDePieza = movimientosDeAlfil[casillaDeAlfil - 1][key];
-        movimientosPosibles |= movimientosDePieza;
-    }
-    while (bitboardDeDamas > 0) {
-        int casillaDeDama = operaciones_bit::LSB(bitboardDeDamas);
-        U64 attackMaskTorre = constantes::attackMasksTorre[casillaDeDama - 1];
-        U64 attackMaskAlfil = constantes::attackMasksAlfil[casillaDeDama - 1];
-        U64 occupancyMask = attackMaskTorre & todas_las_piezas();
-        U64 key = occupancyMask * constantes::magicsParaTorre[casillaDeDama - 1] >> (64 - 12);
-        U64 movimientosDePieza = movimientosDeTorre[casillaDeDama - 1][key];
-        occupancyMask = attackMaskAlfil & todas_las_piezas();
-        key = occupancyMask * constantes::magicsParaAlfil[casillaDeDama - 1] >> (64 - 9);
-        movimientosDePieza |= movimientosDeAlfil[casillaDeDama - 1][key];
-        movimientosPosibles |= movimientosDePieza;
-
-    }
-    while (bitboardDePeones > 0) {
-        int casillaDePeon = operaciones_bit::LSB(bitboardDePeones);
-        auto peon = new Peon();
-        U64 movimientosDePieza = peon->generar_movimientos_legales(casillaDePeon, piezas_negras(), piezas_blancas(), 1);
-        movimientosPosibles |= movimientosDePieza;
-        delete peon;
-
-    }
-    while (bitboardDeCaballo > 0) {
-        int casillaDeCaballo = operaciones_bit::LSB(bitboardDeCaballo);
-        auto caballo = new Caballo();
-        U64 bitboardCaballo = operaciones_bit::setBit(0L, casillaDeCaballo, 1);
-        U64 movimientosDePieza = caballo->generar_movimientos_legales(bitboardCaballo, piezas_negras(),
-                                                                      piezas_blancas(), 0);
-        movimientosPosibles |= movimientosDePieza;
-        delete caballo;
-
-    }
-    return movimientosPosibles;
+    return bitboard_movimientos_rey_negro(bitboards[6]) | bitboard_movimientos_dama_negra(bitboards[7]) |
+    bitboard_movimientos_torre_negra(bitboards[8]) | bitboard_movimientos_alfil_negro(bitboards[9]) |
+    bitboard_movimientos_caballo_negro(bitboards[10]) | bitboard_movimientos_peon_negro(bitboards[11]);
 }
 
 bool Tablero::chequearEnroqueCorto() {

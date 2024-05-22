@@ -4,7 +4,6 @@
 
 #ifndef CHESSCPP_PIEZA_H
 #define CHESSCPP_PIEZA_H
-#include "Tablero.h"
 #include <string>
 #include <list>
 #include "Jugada.h"
@@ -13,6 +12,7 @@ using namespace std;
 
 typedef unsigned long long U64;
 
+class Tablero;
 class Pieza {
 
 public:
