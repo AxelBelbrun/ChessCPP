@@ -12,20 +12,6 @@ U64 operaciones_bit::setBit(U64 num, int pos, int bit){
         return num;
     }
 
-    U64 operaciones_bit::generador_numeros_random(){
-        U64 u1, u2, u3, u4;
-        u1 = (U64)(operaciones_bit::random_custom()) & 0xFFFF; u2 = (U64)(operaciones_bit::random_custom()) & 0xFFFF;
-        u3 = (U64)(operaciones_bit::random_custom()) & 0xFFFF; u4 = (U64)(operaciones_bit::random_custom()) & 0xFFFF;
-        return u1 | (u2 << 16) | (u3 << 32) | (u4 << 48);
-}
-    U64 operaciones_bit:: random_custom(){
-       U64 numero = semilla;
-       numero ^= numero << 13;
-        numero ^= numero >> 17;
-        numero ^= numero << 5;
-        semilla = numero;
-        return numero;
-    }
 
     // Devuelve la posición del dígito menos significativo de num y además setea en 0 al dígito en cuestión.
     int operaciones_bit::LSB(U64 &num) {
@@ -69,14 +55,7 @@ int operaciones_bit::getTipoDeJugada(u_short movimiento){
 
     return (movimiento >> 12) & 15;
 }
-int operaciones_bit:: contadorDe1s(U64 num){
-    int contador = 0;
-    while(num > 0){
-        int LSB = operaciones_bit::LSB(num);
-        contador++;
-    }
-    return contador;
-}
+
 
 int operaciones_bit::espejarCasilla(int casilla){
         casilla--;
