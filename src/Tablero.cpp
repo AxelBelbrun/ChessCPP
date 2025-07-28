@@ -10,296 +10,363 @@
 #include "calculadoraMovesAlfil.h"
 #include "calculadoraMovesTorre.h"
 #include <string>
+#include <x86intrin.h>  // Para intrinsics específicas de la CPU
 
 using namespace std;
 
-Tablero::Tablero(std::string posicionASetear) {
+int PEON_BLANCO = PEON;
+int PEON_NEGRO = PEON + 6;
+int REY_BLANCO = REY;
+int REY_NEGRO = REY + 6;
+int TORRE_BLANCA = TORRE;
+int TORRE_NEGRA = TORRE + 6;
+int DAMA_BLANCA = DAMA;
+int DAMA_NEGRA = DAMA + 6;
+int ALFIL_BLANCO = ALFIL;
+int ALFIL_NEGRO = ALFIL + 6;
+int CABALLO_BLANCO = CABALLO;
+int CABALLO_NEGRO = CABALLO + 6;
 
+Tablero::Tablero(std::string posicionASetear) {
+    generarTablasDeMovimientos();
+    zobrist = 0;
+    for (int i = 0; i < 256; i++) {
+        cantMovesGenerados[i] = -1;
+    }
+    calcularMasksPeonesPasados();
+    contadorZobrist = -1;
+
+
+
+
+
+    //Se asigna la zobrist key inicial según la info del tablero.
     //Si la posicion a setear es la inicial del ajedrez
     if (posicionASetear.std::string::find("startpos") != std::string::npos) {
-
-        _turno = 0;
-        enroqueCortoBlanco.push_back(true);
-        enroqueLargoBlanco.push_back(true);
-        enroqueLargoNegro.push_back(true);
-        enroqueCortoNegro.push_back(true);
-
-        //bitboards es un vector que almacena los 12 bitboards que representan las historialPosiciones de
-        //cada tipo de pieza en el tablero. El orden es el siguiente: rey, dama, torre, alfil, caballo, peon.
-        // De 0 a 5 son los bitboards de blancas, de 6 a 11 los de negras.
-
-        //Se van insertando los bitboards correspondientes en orden y con las piezas posicionadas
-        // según la posición inicial del ajedrez.
-        bitboards.push_back(1L << 3);
-        bitboards.push_back(1L << 4);
-        bitboards.push_back(1L | 1L << 7);
-        bitboards.push_back(1L << 2 | 1L << 5);
-        bitboards.push_back(1L << 1 | 1L << 6);
-
-        U64 peonesBlancosAlInicio = 0L;
-        for (int i = 8; i < 16; i++) {
-            peonesBlancosAlInicio = peonesBlancosAlInicio | 1L << i;
-        }
-        bitboards.push_back(peonesBlancosAlInicio);
-        bitboards.push_back(1L << 59);
-        bitboards.push_back(1L << 60);
-        bitboards.push_back(1L << 63 | 1L << 56);
-        bitboards.push_back(1L << 61 | 1L << 58);
-        bitboards.push_back(1L << 62 | 1L << 57);
-        U64 peonesNegrosAlInicio = 0L;
-        for (int i = 48; i < 56; i++) {
-            peonesNegrosAlInicio = peonesNegrosAlInicio | 1L << i;
-        }
-        bitboards.push_back(peonesNegrosAlInicio);
-
-
-        //El valor del material desde la posición inicial del ajedrez es siempre el mismo,
-        //asi que en vez de "calcularlo" directamente lo asignamos
-        historialMaterialBlancas.push_back(4050);
-        historialMaterialNegras.push_back(-4050);
-
-        //Feature a optimizar
-        /*//El valor del control del centro inicial sí se calcula, aunque siempre sea el mismo:
-        controlCentroBlancas = controlDeCentro(0);
-        controlCentroNegras = controlDeCentro(1);*/
-
-
-        //El valor de la ocupación inicial también se calcula, aunque siempre sea el mismo:
-        historialOcupacionBlancas.push_back(valoracionMaterial(0));
-        historialOcupacionNegras.push_back(valoracionMaterial(1));
-
-        //Si estamos construyendo un tablero y el string contiene la palabra "moves"
-        // significa que se nos pasaron jugadas para llegar a una determinada posición, entonces
-        // las hacemos.
-        if (posicionASetear.std::string::find("moves") != std::string::npos) {
-            string jugadas = posicionASetear.substr(posicionASetear.std::string::find("moves") + 6,
-                                                    posicionASetear.size() - 1);
-            int i = 0;
-            while (i < jugadas.size()) {
-                string jugadaString = jugadas.substr(i, 2);
-                int salida = constantes::casillaANumero[jugadaString];
-                string jugadaString2 = jugadas.substr(i + 2, 2);
-                int llegada = constantes::casillaANumero[jugadaString2];
-                int tipoDeJugada = 0;
-                u_short jugada = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
-                moverPiezaTrusted(salida, llegada, tipoDeJugada);
-                i += 5;
-            }
-
-        }
-
+        setearPosicionInicial(posicionASetear);
     }
 
         //Si nos pasan un fen con una determinada posición
     else {
+        setearPosicionDeFen(posicionASetear);
+    }
 
-        //Inicializar bitboards en 0
-        for (int k = 0; k < 12; k++) {
-            bitboards.push_back(0ULL);
-        }
+    numeroDeJugadas = 0;
 
-        //Se inician los enroques en false, luego con la info del fen se sabe cuáles setear en true
-        enroqueCortoBlanco.push_back(false);
-        enroqueLargoBlanco.push_back(false);
-        enroqueLargoNegro.push_back(false);
-        enroqueCortoNegro.push_back(false);
-
-        //Tomamos la parte que nos interesa del string, eliminando "position fen "
-
-        string fen = posicionASetear.substr(13, posicionASetear.size() - 13);
-
-        //Se van insertando las piezas y asignando valores de variables según el fen
-        int casillaActual = 64; //Se arranca desde la casilla a8 porque así funciona la notacion FEN
-        for (int i = 0; i < fen.size(); i++) {
-
-            //Si "casillaActual" es > 0 entonces todavía estamos en la parte del FEN que contiene info
-            //sobre dónde estás las piezas en el tablero. Según la letra, asignamos la pieza a su bitboard.
-            if (casillaActual > 0) {
-                switch (fen[i]) {
-                    case 'K':
-                        bitboards[0] = operaciones_bit::setBit(bitboards[0], casillaActual, 1);
-                        casillaActual--;
-                        break;
-
-                    case 'Q':
-                        bitboards[1] = operaciones_bit::setBit(bitboards[1], casillaActual, 1);
-                        casillaActual--;
-                        break;
-
-                    case 'R':
-                        bitboards[2] = operaciones_bit::setBit(bitboards[2], casillaActual, 1);
-                        casillaActual--;
-                        break;
-
-                    case 'B':
-                        bitboards[3] = operaciones_bit::setBit(bitboards[3], casillaActual, 1);
-                        casillaActual--;
-                        break;
-
-                    case 'N':
-                        bitboards[4] = operaciones_bit::setBit(bitboards[4], casillaActual, 1);
-                        casillaActual--;
-                        break;
-
-                    case 'P':
-                        bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaActual, 1);
-                        casillaActual--;
-                        break;
+    // Inicializamos la zobrist key en 0, lo que denota que aún no
+    // está seteada.
 
 
-                    case 'k':
-                        bitboards[6] = operaciones_bit::setBit(bitboards[6], casillaActual, 1);
-                        casillaActual--;
-                        break;
 
-                    case 'q':
-                        bitboards[7] = operaciones_bit::setBit(bitboards[7], casillaActual, 1);
-                        casillaActual--;
-                        break;
+}
 
-                    case 'r':
-                        bitboards[8] = operaciones_bit::setBit(bitboards[8], casillaActual, 1);
-                        casillaActual--;
-                        break;
+void
+Tablero::generarTablasDeMovimientos() {//Se generan las tablas de movimientos posibles para cada pieza en cada casilla
+    for (int i = 0; i < 64; i++) {
+        generarTablasSliding(i);
+        generarTablasNoSliding(i);
+    }
+}
 
-                    case 'b':
-                        bitboards[9] = operaciones_bit::setBit(bitboards[9], casillaActual, 1);
-                        casillaActual--;
-                        break;
 
-                    case 'n':
-                        bitboards[10] = operaciones_bit::setBit(bitboards[10], casillaActual, 1);
-                        casillaActual--;
-                        break;
+//Genera el bitboard de movimientos posibles para cada pieza no sliding en la casilla i
+void Tablero::generarTablasNoSliding(
+        int i) {
+    //Creamos objetos de cada pieza faltante para poder generar los movimientos legales,
+// y no los eliminamos porque serán de utilidad durante todo el programa.
 
-                    case 'p':
-                        bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaActual, 1);
-                        casillaActual--;
-                        break;
+    caballo = new Caballo();
+    rey = new Rey();
+    peon = new Peon();
+    dama = new Dama();
+    U64 bitboardCaballo = operaciones_bit::setBit(0L, i + 1, 1);
+    U64 movimientosCaballo = caballo->generar_movimientos_legales(bitboardCaballo, 0, 0, 0);
+    movimientosDeCaballo[i] = movimientosCaballo;
+    U64 bitboardRey = operaciones_bit::setBit(0L, i + 1, 1);
+    U64 movimientosRey = rey->generar_movimientos_legales(bitboardRey, 0, 0, 0);
+    movimientosDeRey[i] = movimientosRey;
+    U64 bitboardPeon = operaciones_bit::setBit(0L, i + 1, 1);
+}
 
-                    case '/':
-                        continue;
+//Genera el bitboard de movimientos posibles para cada pieza sliding en la casilla i
+void Tablero::generarTablasSliding(int i) {
+    vector<U64> configuracionesPosiblesTorre = calculadoraMovesTorre::masksPiezasBloqueando(
+            constantes::attackMasksTorre[i]);
+    vector<U64> configuracionesPosiblesAlfil = calculadoraMovesAlfil::masksPiezasBloqueando(
+            constantes::attackMasksAlfil[i]);
+    U64 bitboardTorre = operaciones_bit::setBit(0L, i + 1, 1);
+    U64 bitboardAlfil = operaciones_bit::setBit(0L, i + 1, 1);
+    torre = new Torre();
+    alfil = new Alfil();
+    for (int j = 0; j < configuracionesPosiblesTorre.size(); j++) {
+        U64 movimientosParaConfig = torre->generar_movimientos_legales(bitboardTorre, 0,
+                                                                       configuracionesPosiblesTorre[j], 0);
+        movimientosDeTorre[i][(configuracionesPosiblesTorre[j] * constantes::magicsParaTorre[i])
+                >> (64 - 12)] = movimientosParaConfig;
 
-                    default:
-                        casillaActual -= fen[i] - '0';
-                }
-            } else if (fen[i] == ' ') {
-                continue;
+    }
+    for (int k = 0; k < configuracionesPosiblesAlfil.size(); k++) {
+        U64 movimientosParaConfig = alfil->generar_movimientos_legales(bitboardAlfil, 0,
+                                                                       configuracionesPosiblesAlfil[k], 0);
+        movimientosDeAlfil[i][(configuracionesPosiblesAlfil[k] * constantes::magicsParaAlfil[i])
+                >> (64 - 9)] = movimientosParaConfig;
 
-                //Si encontramos w es porque el turno es de las blancas.
-            } else if (fen[i] == 'w') {
-                _turno = 0;
+    }
 
-                //K, Q, k y q indican los derechos a enroncar de blancas y negras.
-            } else if (fen[i] == 'K') {
-                enroqueCortoBlanco.back() = true;
-            } else if (fen[i] == 'Q') {
-                enroqueLargoBlanco.back() = true;
-            } else if (fen[i] == 'k') {
-                enroqueCortoNegro.back() = true;
-            } else if (fen[i] == 'q') {
-                enroqueLargoNegro.back() = true;
+}
 
-                //Si llegamos a esta parte se está hablando de un posible casilla de enpassant o de la cantidad
-                // de medio-movimientos
-            } else if (fen[i] >= 97 && fen[i] < 105) {
-                //Si encontramos una "b" puede ser una casilla de enpassant de la columna b (b3 x ej)
-                // o bien indicar que le toca a las negras.
-                if (fen[i] == 'b' && fen[i + 1] == ' ') {
-                    _turno = 1;
+void Tablero::setearPosicionDeFen(const string &posicionASetear) {//Inicializar bitboards en 0
+    inicializarBitboardsVacios();
+
+    //Se inician los enroques en false, luego con la info del fen se sabe cuáles setear en true
+
+    //Tomamos la parte que nos interesa del string, eliminando "position fen "
+
+    string fen = posicionASetear.substr(13, posicionASetear.size() - 13);
+    enroques = stack<derechosDeEnroque>();
+    bitmask enroquesIniciales = 0;
+
+    //Se van insertando las piezas y asignando valores de variables según el fen
+    int casillaActual = 64; //Se arranca desde la casilla a8 porque así funciona la notacion FEN
+    for (int i = 0; i < fen.size(); i++) {
+
+        //Si "casillaActual" es > 0 entonces todavía estamos en la parte del FEN que contiene info
+        //sobre dónde estás las piezas en el tablero. Según la letra, asignamos la pieza a su bitboard.
+        if (casillaActual > 0) {
+            switch (fen[i]) {
+                case 'K':
+                    bitboards[0] = operaciones_bit::setBit(bitboards[0], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'Q':
+                    bitboards[1] = operaciones_bit::setBit(bitboards[1], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'R':
+                    bitboards[2] = operaciones_bit::setBit(bitboards[2], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'B':
+                    bitboards[3] = operaciones_bit::setBit(bitboards[3], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'N':
+                    bitboards[4] = operaciones_bit::setBit(bitboards[4], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'P':
+                    bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+
+                case 'k':
+                    bitboards[6] = operaciones_bit::setBit(bitboards[6], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'q':
+                    bitboards[7] = operaciones_bit::setBit(bitboards[7], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'r':
+                    bitboards[8] = operaciones_bit::setBit(bitboards[8], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'b':
+                    bitboards[9] = operaciones_bit::setBit(bitboards[9], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'n':
+                    bitboards[10] = operaciones_bit::setBit(bitboards[10], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case 'p':
+                    bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaActual, 1);
+                    casillaActual--;
+                    break;
+
+                case '/':
+                    continue;
+
+                default:
+                    casillaActual -= fen[i] - '0';
+            }
+        } else if (fen[i] == ' ') {
+            continue;
+
+            //Si encontramos w es porque el turno es de las blancas.
+        } else if (fen[i] == 'w') {
+            _turno = 0;
+
+            //K, Q, k y q indican los derechos a enroncar de blancas y negras.
+        } else if (fen[i] == 'K') {
+            enroquesIniciales = enroquesIniciales | 0b1;
+        } else if (fen[i] == 'Q') {
+            enroquesIniciales = enroquesIniciales | 0b10;
+        } else if (fen[i] == 'k') {
+            enroquesIniciales = enroquesIniciales | 0b100;
+        } else if (fen[i] == 'q') {
+            enroquesIniciales = enroquesIniciales | 0b1000;
+
+            //Si llegamos a esta parte se está hablando de un posible casilla de enpassant o de la cantidad
+            // de medio-movimientos
+        } else if (fen[i] >= 97 && fen[i] < 105) {
+            //Si encontramos una "b" puede ser una casilla de enpassant de la columna b (b3 x ej)
+            // o bien indicar que le toca a las negras.
+            if (fen[i] == 'b' && ((fen[i + 1] == ' ') || (i+1 == fen.size()))) {
+                _turno = 1;
+            } else {
+                string jugadaString{fen[i], fen[i + 1]};
+                int casilla = constantes::casillaANumero[jugadaString];
+                int salida, llegada, tipoDeJugada;
+                if (fen[i + 1] - '0' == 3) {
+                    salida = casilla - 8;
+                    llegada = casilla + 8;
+                    tipoDeJugada = QUIET;
                 } else {
-                    string jugadaString{fen[i], fen[i + 1]};
-                    int casilla = constantes::casillaANumero[jugadaString];
-                    int salida, llegada, tipoDeJugada;
-                    if (fen[i + 1] - '0' == 3) {
-                        salida = casilla - 8;
-                        llegada = casilla + 8;
-                        tipoDeJugada = QUIET;
-                    } else {
-                        salida = casilla + 8;
-                        llegada = casilla - 8;
-                        tipoDeJugada = QUIET;
-                    };
+                    salida = casilla + 8;
+                    llegada = casilla - 8;
+                    tipoDeJugada = QUIET;
+                };
 
-                    //Agregamos el avance de peón al historial para que la detección de enpassant
-                    //funcione correctamente.
-                    u_short jugada = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
-                    _jugadas.push_back(jugada);
-
+                //Agregamos el avance de peón al historial para que la detección de enpassant
+                //funcione correctamente.
+                u_short jugada = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
+/*
+                _jugadas.push_back(jugada);
+*/
+                contadorJugadas++;
+                jugadas[contadorJugadas] = jugada;
+                int filaDeEnPassant = (llegada % 8) - 1;
+                if (filaDeEnPassant == -1) {
+                    filaDeEnPassant = 7;
                 }
+                historialEnPassant.push_back(filaDeEnPassant);
+
             }
         }
-
-        //Se calcula el valor del material y se agrega al historial
-        historialMaterialBlancas.push_back(valoracionMaterial(0));
-        historialMaterialNegras.push_back(valoracionMaterial(1));
-/*        controlCentroBlancas = controlDeCentro(0);
-        controlCentroNegras = controlDeCentro(1);*/
-
-
-        historialOcupacionBlancas.push_back(calcularOcupacion(0));
-        historialOcupacionNegras.push_back(calcularOcupacion(1));
-
     }
-    zobrist = 0;
 
-    //Se asigna la zobrist key inicial según la info del tablero.
+    //Inicializamos las variables:
+    enroques.push(derechosDeEnroque{enroquesIniciales, 0, -5});
     zobrist = zobristKey();
+    contadorZobrist++;
+    historialZobrist[contadorZobrist] = zobrist;
 
-    historialPosiciones.push_back(bitboards);
+    //Se calcula el valor del material y se agrega al historial
+    contadorMaterialBlancas = 0;
+    historial_material_blancas[contadorMaterialBlancas] = std::make_pair(valoracionMaterial(0), 0);
+    contadorMaterialNegras = 0;
+    historial_material_negras[contadorMaterialNegras] = std::make_pair(valoracionMaterial(1), 0);
 
-    quienMovioPrimero = _turno;
+    contadorOcupacion = 0;
+    historial_ocupacion_blancas[contadorOcupacion] = calcularOcupacion(0);
+    historial_ocupacion_negras[contadorOcupacion] = calcularOcupacion(1);
+
+    if (historialEnPassant.empty()) {
+        historialEnPassant.push_back(-1);
+    }
+
+}
 
 
-    //Se generan las tablas de movimientos de las sliding pieces..
-    for (int i = 0; i < 64; i++) {
 
-        vector<U64> configuracionesPosiblesTorre = calculadoraMovesTorre::masksPiezasBloqueando(
-                constantes::attackMasksTorre[i]);
-        vector<U64> configuracionesPosiblesAlfil = calculadoraMovesAlfil::masksPiezasBloqueando(
-                constantes::attackMasksAlfil[i]);
-        U64 bitboardTorre = operaciones_bit::setBit(0L, i + 1, 1);
-        U64 bitboardAlfil = operaciones_bit::setBit(0L, i + 1, 1);
-        auto torre = new Torre();
-        auto alfil = new Alfil();
-        for (int j = 0; j < configuracionesPosiblesTorre.size(); j++) {
-            U64 movimientosParaConfig = torre->generar_movimientos_legales(bitboardTorre, 0,
-                                                                           configuracionesPosiblesTorre[j], 0);
-            movimientosDeTorre[i][(configuracionesPosiblesTorre[j] * constantes::magicsParaTorre[i])
-                    >> (64 - 12)] = movimientosParaConfig;
+void Tablero::inicializarBitboardsVacios() {
+    for (int k = 0; k < 12; k++) {
+        bitboards.push_back(0ULL);
+    }
+}
 
+void Tablero::setearPosicionInicial(const string &posicionASetear) {
+    _turno = 0;
+    enroques = stack<derechosDeEnroque>();
+    enroques.push(derechosDeEnroque{0b1111, 0, -5});
+
+    //bitboards es un vector que almacena los 12 bitboards que representan las historialPosiciones de
+//cada tipo de pieza en el tablero. El orden es el siguiente: rey, dama, torre, alfil, caballo, peon.
+// De 0 a 5 son los bitboards de blancas, de 6 a 11 los de negras.
+
+    //Se van insertando los bitboards correspondientes en orden y con las piezas posicionadas
+// según la posición inicial del ajedrez.
+    bitboards.push_back(1L << 3);
+    bitboards.push_back(1L << 4);
+    bitboards.push_back(1L | 1L << 7);
+    bitboards.push_back(1L << 2 | 1L << 5);
+    bitboards.push_back(1L << 1 | 1L << 6);
+
+    U64 peonesBlancosAlInicio = 0L;
+    for (int i = 8; i < 16; i++) {
+        peonesBlancosAlInicio = peonesBlancosAlInicio | 1L << i;
+    }
+    bitboards.push_back(peonesBlancosAlInicio);
+    bitboards.push_back(1L << 59);
+    bitboards.push_back(1L << 60);
+    bitboards.push_back(1L << 63 | 1L << 56);
+    bitboards.push_back(1L << 61 | 1L << 58);
+    bitboards.push_back(1L << 62 | 1L << 57);
+    U64 peonesNegrosAlInicio = 0L;
+    for (int i = 48; i < 56; i++) {
+        peonesNegrosAlInicio = peonesNegrosAlInicio | 1L << i;
+    }
+    bitboards.push_back(peonesNegrosAlInicio);
+
+
+    //El valor del material desde la posición inicial del ajedrez es siempre el mismo,
+    //asi que en vez de "calcularlo" directamente lo asignamos
+    contadorMaterialBlancas = 0;
+    historial_material_blancas[contadorMaterialBlancas] = std::make_pair(3952, 0);
+    contadorMaterialNegras = 0;
+    historial_material_negras[contadorMaterialNegras] = std::make_pair(3952, 0);
+
+    //El valor de la ocupación inicial se calcula, aunque siempre sea el mismo:
+    /*historialOcupacionBlancas.push_back(valoracionMaterial(0));
+    historialOcupacionNegras.push_back(valoracionMaterial(1));*/
+    contadorOcupacion = 0;
+    historial_ocupacion_blancas[contadorOcupacion] = calcularOcupacion(0);
+    historial_ocupacion_negras[contadorOcupacion] = calcularOcupacion(1);
+    historialEnPassant.push_back(-1);
+    zobrist = zobristKey();
+    contadorZobrist++;
+    historialZobrist[contadorZobrist] = zobrist;
+
+    //Si estamos construyendo un tablero y el string contiene la palabra "moves"
+// significa que nos pasaron jugadas para llegar a una determinada posición, entonces
+// las parseamos y luego las hacemos.
+    if (posicionASetear.std::string::find("moves") != std::string::npos) {
+        string jugadas = posicionASetear.substr(posicionASetear.std::string::find("moves") + 6,
+                                                posicionASetear.size() - 1);
+        int i = 0;
+        while (i < jugadas.size()) {
+            string jugadaString = jugadas.substr(i, 4);
+            generar_movimientos(_turno, 0);
+            for (int j = 0; j <= cantMovesGenerados[0]; j++) {
+                u_short move = movimientos_generados[0][j];
+                if (jugadaString == formatearJugada(move)) {
+                    moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move),
+                               operaciones_bit::getTipoDeJugada(move));
+                    break;
+                }
+            }
+            cantMovesGenerados[0] = -1;
+            contadorJugadas++;
+            i += 5;
         }
-        for (int k = 0; k < configuracionesPosiblesAlfil.size(); k++) {
-            U64 movimientosParaConfig = alfil->generar_movimientos_legales(bitboardAlfil, 0,
-                                                                           configuracionesPosiblesAlfil[k], 0);
-            movimientosDeAlfil[i][(configuracionesPosiblesAlfil[k] * constantes::magicsParaAlfil[i])
-                    >> (64 - 9)] = movimientosParaConfig;
-
-        }
-        delete torre;
-        delete alfil;
-
-        caballo = new Caballo();
-        rey = new Rey();
-        peon = new Peon();
-        U64 bitboardCaballo = operaciones_bit::setBit(0L, i + 1, 1);
-        U64 movimientosCaballo = caballo->generar_movimientos_legales(bitboardCaballo, 0, 0, 0);
-        movimientosDeCaballo[i] = movimientosCaballo;
-        U64 bitboardRey = operaciones_bit::setBit(0L, i + 1, 1);
-        U64 movimientosRey = rey -> generar_movimientos_legales(bitboardRey, 0, 0, 0);
-        movimientosDeRey[i] = movimientosRey;
-        U64 bitboardPeon = operaciones_bit::setBit(0L, i + 1, 1);
-        U64 movimientosPeonBlanco = peon->generar_movimientos_legales(bitboardPeon, 0, 0, 0);
-        movimientosDePeon[i][0] = movimientosPeonBlanco;
-        U64 movimientosPeonNegro = peon->generar_movimientos_legales(bitboardPeon, 0, 0, 1);
-        movimientosDePeon[i][1] = movimientosPeonNegro;
-
-
 
     }
-};
+}
 
 
+//Inicialiazamos las lookup tables. 
 U64 Tablero::movimientosDeTorre[64][4096];
 U64 Tablero::movimientosDeAlfil[64][512];
 
@@ -398,393 +465,606 @@ void Tablero::imprimirTablero() {
     cout << "\n";
 }
 
-void Tablero::imprimirJugadas() {
-
-    for (int i = 0; i < _jugadas.size(); i++) {
-        cout << constantes::NumeroACasilla[operaciones_bit::getSalida(_jugadas[i])] +
-                constantes::NumeroACasilla[operaciones_bit::getLlegada(_jugadas[i])] << endl;
-
-
-    }
-}
-
 void Tablero::deshacerMovimiento() {
-    actualizarZobristKey(_jugadas.back(), false);
-    actualizarCantMovesPiezasMenores(_jugadas.back(), false);
+    
+    //El orden de las siguientes operaciones es importante, ya que "actualizarZobristKey" asume que
+    // los bitboards aún no fueron modificados con la posicioón que se quiere deshacer.
 
+    u_short jugada = jugadas[contadorJugadas];
+
+    derechosEnroqueAux = 0;
+    contadorZobrist--;
+    zobrist = historialZobrist[contadorZobrist];
+    deshacerEnroque();
+    deshacerUltimosRegistros();
+
+    numeroDeJugadas--;
+
+
+    /// Momentánemente la función de evaluación no utiliza la cantidad
+    /// de movimientos realizados por piezas menores, por lo que no vale la pena
+    /// realizar el cálculo.
+    actualizarCantMovesPiezasMenores(jugada, false);
     //En caso de que la jugada a deshacer sea un enroque, hay que volver a setear en "false"
     // la variable que representa si ese bando enrrocó.
-    if (_turno == 0 && operaciones_bit::getTipoDeJugada(_jugadas.back()) == CASTLING) {
+    if (_turno == 0 && operaciones_bit::getTipoDeJugada(jugada) == CASTLING) {
         enrocoNegras = false;
-    } else if (_turno == 1 && operaciones_bit::getTipoDeJugada(_jugadas.back()) == CASTLING) {
+    } else if (_turno == 1 && operaciones_bit::getTipoDeJugada(jugada) == CASTLING) {
         enrocoBlancas = false;
-    }
-
-    //Eliminamos el último elemento de todos los registros que tenemos.
-    historialPosiciones.pop_back();
-    _jugadas.pop_back();
-    enroqueCortoBlanco.pop_back();
-    enroqueCortoNegro.pop_back();
-    enroqueLargoBlanco.pop_back();
-    enroqueLargoNegro.pop_back();
-    historialDePosiciones.pop_back();
-    ganoNegro = false;
-    ganoBlanco = false;
-
-    historialMaterialBlancas.pop_back();
-    historialMaterialNegras.pop_back();
-    historialOcupacionBlancas.pop_back();
-    historialOcupacionNegras.pop_back();
-
-    //Podría suceder que la jugada que estamos deshaciendo haya sido una que
-    // haga perder el derecho a enrocar, por lo que seteamos las variables que indican
-    // qué enroques podemos hacer con el valor que tenían anteriormente a la jugada. (Como ya eliminamos
-    // el último elemento de todos nuestros registros, el valor que nos interesa quedó ahora en el último lugar)
-    if (_turno == 1) {
-        if (enroqueCortoNegro.back()) {
-            perdidaEnroqueCortoNegras = false;
-        }
-        if (enroqueLargoNegro.back()) {
-            perdidaEnroqueLargoNegras = false;
-        }
-    } else {
-        if (enroqueCortoBlanco.back()) {
-            perdidaEnroqueCortoBlancas = false;
-        }
-        if (enroqueLargoBlanco.back()) {
-            perdidaEnroqueLargoBlancas = false;
-        }
     }
 
 
     //Actualizamos los bitboards
-    for (int i = 0; i < 12; i++) {
-        bitboards[i] = historialPosiciones.back()[i];
+   modificacionBitboard cambios =
+           historialBitboards[contadorHistorialBitboards];
+   int indexPrimerCambio = cambios.tipoDeBitboard_1;
+   U64 bitboardPrimerCambio = cambios.bitboard_1;
+   bitboards[indexPrimerCambio] = bitboardPrimerCambio;
+   if(cambios.tipoDeBitboard_2 != -1) {
+       int indexSegundoCambio = cambios.tipoDeBitboard_2;
+       U64 bitboardSegundoCambio = cambios.bitboard_2;
+       bitboards[indexSegundoCambio] = bitboardSegundoCambio;
+
+   }
+    if(cambios.tipoDeBitboard_3 != -1) {
+        int indexTercerCambio = cambios.tipoDeBitboard_3;
+        U64 bitboardTercerCambio = cambios.bitboard_3;
+        bitboards[indexTercerCambio] = bitboardTercerCambio;
     }
+    contadorHistorialBitboards--;
+
     cambiarTurno();
 
+
+}
+
+void Tablero::deshacerUltimosRegistros() {//Eliminamos el último elemento de todos los registros que tenemos.
+
+    contadorJugadas--;
+    ganoNegro = false;
+    ganoBlanco = false;
+    historialEnPassant.pop_back();
+
+    if(modif_hist_material_blancas == numeroDeJugadas){
+        contadorMaterialBlancas--;
+        modif_hist_material_blancas = historial_material_blancas[contadorMaterialBlancas].second;
+    }
+    if(modif_hist_material_negras == numeroDeJugadas){
+        contadorMaterialNegras--;
+        modif_hist_material_negras = historial_material_negras[contadorMaterialNegras].second;
+    }
+    contadorOcupacion--;
 };
 
 bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     u_short aRealizar = operaciones_bit::crearJugada(salida, llegada, tipo_jugada);
-
-
-/*    //El siguiente fragmento de código evita cierto viejo bug que aún no se
-    // pudo rastrear y eliminar.
-    *//**************************************************************************//*
-
-    if(_jugadas.size() > 0) {
-        if (operaciones_bit::getSalida(_jugadas.back()) == salida &&
-            operaciones_bit::getLlegada(_jugadas.back()) == llegada) {
-            return false;
-        }
-    }
-    */
-    /**************************************************************************/
-    if (tipo_jugada == CHECKMATE) {
-        if (_turno == 0) {
-            ganoBlanco = true;
-        } else {
-            ganoNegro = true;
-        }
-        moverPiezaTrusted(salida, llegada, tipo_jugada);
-        return true;
-    } else if (tipo_jugada == CASTLING) {
-        u_short jugada = operaciones_bit::crearJugada(salida, llegada, CASTLING);
-        if (enrocar(jugada)) {
+    bool actualiceEnPassant = false;
+    derechosEnroqueAux = enroques.top().derechosActuales;
+    numeroDeJugadas++;
+    if (tipo_jugada == CASTLING) {
+        if (enrocar(aRealizar)) {
 
             return true;
         } else {
             return false;
         }
     } else if (tipo_jugada == ENPASSANT) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+        
         actualizarMaterial(aRealizar);
         actualizarOcupacion(aRealizar);
-        actualizarZobristKey(aRealizar, true);
-        historialDePosiciones.push_back(zobrist);
+        actualizarZobristKey(aRealizar);
+        contadorHistorialBitboards++;
+        modificacionBitboard cambios = {PEON_BLANCO, bitboards[PEON_BLANCO],
+                                        PEON_NEGRO, bitboards[PEON_NEGRO], -1, 0};
+        historialBitboards[contadorHistorialBitboards] = cambios;
+
         if (_turno == 0) {
-            bitboards[5] = operaciones_bit::setBit(bitboards[5], llegada, 1);
-            bitboards[5] = operaciones_bit::setBit(bitboards[5], salida, 0);
-            bitboards[11] = operaciones_bit::setBit(bitboards[11], llegada - 8, 0);
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], llegada, 1);
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], salida, 0);
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], llegada - 8, 0);
         } else {
-            bitboards[11] = operaciones_bit::setBit(bitboards[11], llegada, 1);
-            bitboards[11] = operaciones_bit::setBit(bitboards[11], salida, 0);
-            bitboards[5] = operaciones_bit::setBit(bitboards[5], llegada + 8, 0);
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], llegada, 1);
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], salida, 0);
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], llegada + 8, 0);
         }
-
-
-        _jugadas.push_back(aRealizar);
-        historialPosiciones.push_back(bitboards);
-
+        contadorJugadas++;
+        jugadas[contadorJugadas] = aRealizar;
+        historialEnPassant.push_back(-1);
         if (reyPropioEnJaque(_turno)) {
             cambiarTurno();
             deshacerMovimiento();
             return false;
         }
 
+        //Chequeamos si este movimiento da jaque al rival
+        if (reyPropioEnJaque(1 - _turno)) {
+            tipo_jugada = ENPASSANTCHECK;
+        }
+
 
         cambiarTurno();
+;
+
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+ if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            for(auto x: jugadas) {
+                cout << x << endl;
+            } exit(0);
+        }*/
         ep++;
 
         return true;
 
-    } else if (tipo_jugada == PROMOTION || tipo_jugada == PROMOTIONCHECK) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+    } else if (tipo_jugada == PROMOTION) {
+        ;
+
+        
         actualizarMaterial(aRealizar);
         actualizarOcupacion(aRealizar);
-        actualizarZobristKey(aRealizar, true);
-        historialDePosiciones.push_back(zobrist);
+        actualizarZobristKey(aRealizar);
+
+        contadorHistorialBitboards++;
+        int cambio1;
+        int cambio2;
+        U64 bitboard1;
+        U64 bitboard2;
 
         if (_turno == 0) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) - 8;
+            cambio1 = PEON_BLANCO;
+            bitboard1 = bitboards[PEON_BLANCO];
             if (tipoDePieza(salida) == DAMA) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 1;
+                bitboard2 = bitboards[1];
                 bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 2;
+                bitboard2 = bitboards[2];
                 bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 3;
+                bitboard2 = bitboards[3];
                 bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 4;
+                bitboard2 = bitboards[4];
                 bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 1);
-            }
-            if (PROMOTIONCHECK) {
-                bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 0);
-                bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 0);
-                bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 0);
-                bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 0);
             }
 
         } else {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) + 8;
+            cambio1 = 11;
+            bitboard1 = bitboards[11];
             if (tipoDePieza(salida) == DAMA) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 7;
+                bitboard2 = bitboards[7];
                 bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 8;
+                bitboard2 = bitboards[8];
                 bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 9;
+                bitboard2 = bitboards[9];
                 bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 10;
+                bitboard2 = bitboards[10];
                 bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 1);
             }
-            if (PROMOTIONCHECK) {
-                bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 0);
-                bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 0);
-                bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 0);
-                bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 0);
 
-            }
         }
+        modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, -1, 0};
+        historialBitboards[contadorHistorialBitboards] = cambios;
 
 
-        _jugadas.push_back(aRealizar);
-        historialPosiciones.push_back(bitboards);
 
+        contadorJugadas++;
+        jugadas[contadorJugadas] = aRealizar;
+
+        historialEnPassant.push_back(-1);
         if (reyPropioEnJaque(_turno)) {
             cambiarTurno();
             deshacerMovimiento();
             return false;
         }
-        cambiarTurno();
 
+        //Chequeamos si este movimiento da jaque al rival
+        if (reyPropioEnJaque(1 - _turno)) {
+            tipo_jugada = PROMOTIONCHECK;
+        }
+
+        cambiarTurno();
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+        
+ if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            for(auto x: jugadas) {
+                cout << x << endl;
+            } exit(0);
+        }*/
         return true;
-    } else if (tipo_jugada == PROMOTIONIZQ || tipo_jugada == CPIC) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+    } else if (tipo_jugada == PROMOTIONIZQ) {
+        ;
+
+        
         actualizarMaterial(aRealizar);
         actualizarOcupacion(aRealizar);
-        actualizarZobristKey(aRealizar, true);
-        historialDePosiciones.push_back(zobrist);
+        actualizarZobristKey(aRealizar);
+        contadorHistorialBitboards++;
 
+        int cambio1;
+        int cambio2;
+        int cambio3;
+        U64 bitboard1;
+        U64 bitboard2;
+        U64 bitboard3;
         if (_turno == 0) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) - 9;
+            cambio1 = PEON_BLANCO;
+            bitboard1 = bitboards[PEON_BLANCO];
             if (tipoDePieza(salida) == DAMA) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 1;
+                bitboard2 = bitboards[1];
                 bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 2;
+                bitboard2 = bitboards[2];
                 bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 3;
+                bitboard2 = bitboards[3];
                 bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 4;
+                bitboard2 = bitboards[4];
                 bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 1);
             }
-            if (CPIC) {
-                bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 0);
-                bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 0);
-                bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 0);
-                bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 0);
+
+            for (int i = 7; i < 11; i++){
+                U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
+                if(bitboards[i] & bitboardAtaque){
+                    cambio3 = i;
+                    bitboard3 = bitboards[i];
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
             }
+            modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, cambio3, bitboard3};
+            historialBitboards[contadorHistorialBitboards] = cambios;
+
 
         } else {
+            cambio1 = 11;
+            bitboard1 = bitboards[11];
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) + 9;
             if (tipoDePieza(salida) == DAMA) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 7;
+                bitboard2 = bitboards[7];
                 bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 8;
+                bitboard2 = bitboards[8];
                 bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 9;
+                bitboard2 = bitboards[9];
                 bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 10;
+                bitboard2 = bitboards[10];
                 bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 1);
             }
-            if (CPIC) {
-                bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 0);
-                bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 0);
-                bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 0);
-                bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 0);
+            U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
+
+            for(int i = 1; i < 5; i++){
+                if(bitboards[i] & bitboardAtaque){
+                    cambio3 = i;
+                    bitboard3 = bitboards[i];
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
             }
+            modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, cambio3, bitboard3};
+            historialBitboards[contadorHistorialBitboards] = cambios;
         }
 
 
-        _jugadas.push_back(aRealizar);
-        historialPosiciones.push_back(bitboards);
 
+        contadorJugadas++;
+        jugadas[contadorJugadas] = aRealizar;
+
+        historialEnPassant.push_back(-1);
         if (reyPropioEnJaque(_turno)) {
             cambiarTurno();
             deshacerMovimiento();
             return false;
         }
+
+        //Chequeamos si este movimiento da jaque al rival
+        if (reyPropioEnJaque(1 - _turno)) {
+            tipo_jugada = CPIC;
+        }
+
         cambiarTurno();
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+        
+ if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            for(auto x: jugadas) {
+                cout << x << endl;
+            } exit(0);
+        }*/
 
         return true;
 
-    } else if (tipo_jugada == PROMOTIONDER || tipo_jugada == CPDC) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+    } else if (tipo_jugada == PROMOTIONDER) {
+        ;
+
+        
         actualizarMaterial(aRealizar);
         actualizarOcupacion(aRealizar);
-        actualizarZobristKey(aRealizar, true);
-        historialDePosiciones.push_back(zobrist);
+        actualizarZobristKey(aRealizar);
+
+        contadorHistorialBitboards++;
+        int cambio1;
+        int cambio2;
+        int cambio3;
+        U64 bitboard1;
+        U64 bitboard2;
+        U64 bitboard3;
 
         if (_turno == 0) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) - 7;
+            cambio1 = PEON_BLANCO;
+            bitboard1 = bitboards[PEON_BLANCO];
             if (tipoDePieza(salida) == DAMA) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 1;
+                bitboard2 = bitboards[1];
                 bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 2;
+                bitboard2 = bitboards[2];
                 bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 3;
+                bitboard2 = bitboards[3];
                 bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
-                bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaPromocion, 0);
+                bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
+                cambio2 = 4;
+                bitboard2 = bitboards[4];
                 bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 1);
             }
-            if (CPDC) {
-                bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 0);
-                bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 0);
-                bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 0);
-                bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 0);
+            U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
 
+            for (int i = 7; i < 11; i++){
+                if(bitboards[i] & bitboardAtaque){
+                    cambio3 = i;
+                    bitboard3 = bitboards[i];
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
             }
+            modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, cambio3, bitboard3};
+            historialBitboards[contadorHistorialBitboards] = cambios;
 
         } else {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) + 7;
+            cambio1 = 11;
+            bitboard1 = bitboards[11];
             if (tipoDePieza(salida) == DAMA) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 7;
+                bitboard2 = bitboards[7];
                 bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 8;
+                bitboard2 = bitboards[8];
                 bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 9;
+                bitboard2 = bitboards[9];
                 bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
+                cambio2 = 10;
+                bitboard2 = bitboards[10];
                 bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 1);
             }
-            if (CPDC) {
-                bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 0);
-                bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 0);
-                bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 0);
-                bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 0);
+
+            for(int i = 1; i < 5; i++){
+                U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
+                if(bitboards[i] & bitboardAtaque){
+                    cambio3 = i;
+                    bitboard3 = bitboards[i];
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
             }
+            modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, cambio3, bitboard3};
+            historialBitboards[contadorHistorialBitboards] = cambios;
         }
 
 
-        _jugadas.push_back(aRealizar);
-        historialPosiciones.push_back(bitboards);
+
+        contadorJugadas++;
+        jugadas[contadorJugadas] = aRealizar;
+
+        historialEnPassant.push_back(-1);
 
         if (reyPropioEnJaque(_turno)) {
             cambiarTurno();
             deshacerMovimiento();
             return false;
         }
+
+        //Chequeamos si este movimiento da jaque al rival
+        if (reyPropioEnJaque(1 - _turno)) {
+            tipo_jugada = CPDC;
+        }
         cambiarTurno();
+
+
+        ///Esta pieza de código sirve para debuggear el buen funcioniento de la zobristKey.
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+ if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            for(auto x: jugadas) {
+                cout << x << endl;
+            } exit(0);
+        }*/
+
         return true;
 
     }
 
     U64 salidaBitboard = operaciones_bit::setBit(0L, salida, 1);
     U64 llegadaBitboard = operaciones_bit::setBit(0L, llegada, 1);
+/*
+    bool ECB = false, ELB = false, ECN = false, ELN = false; //Para tener noción de qué historiales ya se modificaron
+*/
+    bool enroqueAGuardar = false;
     if (salida == 4) {
-        enroqueCortoBlanco.push_back(false);
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(false);
-        perdidaEnroqueLargoBlancas = true;
-        perdidaEnroqueCortoBlancas = true;
-    } else if (salida == 60) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(false);
-        enroqueLargoNegro.push_back(false);
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
-        perdidaEnroqueLargoNegras = true;
-        perdidaEnroqueCortoNegras = true;
-    } else if (salida == 1) {
-        enroqueCortoBlanco.push_back(false);
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
-        perdidaEnroqueCortoBlancas = true;
-    } else if (salida == 57) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(false);
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
-        perdidaEnroqueCortoNegras = true;
+        if(enroqueCortoBlancas()) {
+            setearEnroque(0, false);
+            enroqueAGuardar = true;
+        }
+        if(enroqueLargoBlancas()) {
+            setearEnroque(1, false);
+            enroqueAGuardar = true;
+        }
 
-    } else if (salida == 64) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(false);
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
-        perdidaEnroqueLargoNegras = true;
-    } else if (salida == 8) {
-        enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(false);
+        /*enroqueCortoBlanco.push_back(false);
+        enroqueLargoBlanco.push_back(false);*/
         perdidaEnroqueLargoBlancas = true;
+        perdidaEnroqueCortoBlancas = true;
+        /*ECB = true;
+        ELB = true;*/
+    } else if (salida == 60) {
+        if(enroqueCortoNegras()) {
+            setearEnroque(2, false);
+            enroqueAGuardar = true;
+        }
+        if(enroqueLargoNegras()) {
+            setearEnroque(3, false);
+            enroqueAGuardar = true;
+        }
+        /*enroqueCortoNegro.push_back(false);
+        enroqueLargoNegro.push_back(false);*/
+        perdidaEnroqueLargoNegras = true;
+        perdidaEnroqueCortoNegras = true;
+        /*ECN = true;
+        ELN = true;*/
     } else {
+        if (salida == 1 || llegada == 1) {
+            if(enroqueCortoBlancas()) {
+                setearEnroque(0, false);
+                enroqueAGuardar = true;
+            }
+            /*enroqueCortoBlanco.push_back(false);*/
+            perdidaEnroqueCortoBlancas = true;
+/*
+            ECB = true;
+*/
+        }
+        if (salida == 57 || llegada == 57) {
+            if(enroqueCortoNegras()) {
+                setearEnroque(2, false);
+                enroqueAGuardar = true;
+            }
+            /*enroqueCortoNegro.push_back(false);*/
+            perdidaEnroqueCortoNegras = true;
+/*
+            ECN = true;
+*/
+
+        }
+        if (salida == 64 || llegada == 64) {
+            if(enroqueLargoNegras()) {
+                setearEnroque(3, false);
+                enroqueAGuardar = true;
+            }
+            /*enroqueLargoNegro.push_back(false);*/
+            perdidaEnroqueLargoNegras = true;
+/*
+            ELN = true;
+*/
+        }
+        if (salida == 8 || llegada == 8) {
+            if(enroqueLargoBlancas()) {
+                setearEnroque(1, false);
+                enroqueAGuardar = true;
+            }
+            /*enroqueLargoBlanco.push_back(false);*/
+            perdidaEnroqueLargoBlancas = true;
+/*
+            ELB = true;
+*/
+        }
+
+    }
+    if(enroqueAGuardar) {
+        guardarEnroque();
+    }
+    if (tipo_jugada == QUIET) {
+        int tipo_de_pieza = obtenerTipoDePieza(salida);
+        if (abs(salida - llegada) == 16 && (tipo_de_pieza == PEON)) {
+            int columnaDeEnpassant = (llegada % 8) - 1;
+            if (columnaDeEnpassant == -1) {
+                columnaDeEnpassant = 7;
+            }
+            historialEnPassant.push_back(columnaDeEnpassant);
+            actualiceEnPassant = true;
+        }
+    }
+   /* if (!ECB) {
         enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
+    }
+    if (!ELB) {
         enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
     }
+    if (!ECN) {
+        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
+    }
+    if (!ELN) {
+        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
+    }*/
+
     if (obtenerTipoDePieza(salida) == DAMA && (_turno == 0) ? !desarrolloBlancasCompleto()
                                                             : !desarrolloNegrasCompleto()) {
         if (_turno == 0) {
@@ -795,31 +1075,64 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     }
     actualizarMaterial(aRealizar);
     actualizarOcupacion(aRealizar);
-    actualizarZobristKey(aRealizar, true);
-    actualizarCantMovesPiezasMenores(aRealizar, true);
+    actualizarZobristKey(aRealizar);
+
+    /// Momentánemente la función de evaluación no utiliza la cantidad
+    /// de movimientos realizados por piezas menores, por lo que no vale la pena
+    /// realizar el cálculo.
+    //actualizarCantMovesPiezasMenores(aRealizar, true);
+/*
     historialDePosiciones.push_back(zobrist);
+*/
 
-
+    int cambio1;
+    int cambio2 = -1;
+    U64 bitboard1;
+    U64 bitboard2 = 0;
     for (int k = 0; k < 12; k++) {
 
         if ((bitboards[k] & salidaBitboard) > 0) {
+            cambio1 = k;
+            bitboard1 = bitboards[k];
             bitboards[k] = operaciones_bit::setBit(bitboards[k], salida, 0);
+
             bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 1);
 
         } else if ((bitboards[k] & llegadaBitboard) > 0) {
+            cambio2 = k;
+            bitboard2 = bitboards[k];
             bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 0);
 
         }
     }
-
-
+    contadorHistorialBitboards++;
+    modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, -1, 0};
+    historialBitboards[contadorHistorialBitboards] = cambios;
+    contadorJugadas++;
+    jugadas[contadorJugadas] = aRealizar;
+/*
     _jugadas.push_back(aRealizar);
+*/
+/*
     historialPosiciones.push_back(bitboards);
+*/
+    if (!actualiceEnPassant) {
+        historialEnPassant.push_back(-1);
+    }
 
     if (reyPropioEnJaque(_turno)) {
         cambiarTurno();
         deshacerMovimiento();
         return false;
+    }
+
+    //Chequeamos si este movimiento da jaque al rival
+    if (reyPropioEnJaque(1 - _turno)) {
+        if (tipo_jugada == QUIET) {
+            tipo_jugada = CHECK;
+        } else if (tipo_jugada == CAPTURE) {
+            tipo_jugada = CAPTURECHECK;
+        }
     }
     if (tipo_jugada == CAPTURE) {
         capturas += 1;
@@ -832,30 +1145,38 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         comunes += 1;
     }
     cambiarTurno();
-
-    if (tipo_jugada == CHECK || tipo_jugada == CAPTURECHECK) {
-        if (_turno == 0) {
-            if (ganoELBlanco()) {
-                ganoBlanco = true;
-            }
-        } else {
-            if (ganoElNegro()) {
-                ganoNegro = true;
-            }
+;
+/*    U64 zobristActual = zobristKey();
+    U64 nuevaZobristKey = zobrist;
+    
+    if(nuevaZobristKey != zobristActual){
+        cout << "Zobrist erronea" << endl;
+        imprimirFen();
+        cout << zobristActual << "-----" << nuevaZobristKey << endl;
+        for(auto x: jugadas) {
+            cout << x << endl;
         }
-    }
+    }*/
+
+    /* if (tipo_jugada == CHECK || tipo_jugada == CAPTURECHECK) {
+         if (_turno == 0) {
+             if (ganoELBlanco()) {
+                 ganoBlanco = true;
+             }
+         } else {
+             if (ganoElNegro()) {
+                 ganoNegro = true;
+             }
+         }
+     }*/
 
 
     return true;
-    /*}*/
-
-
-    return false;
 
 
 };
 
-bool Tablero::casillaAtacada(int casilla, int turno) {
+/*bool Tablero::casillaAtacada(int casilla, int turno) {
 
     vector<u_short> movimientos = this->generar_movimientos(turno);
     for (u_short x: movimientos) {
@@ -864,72 +1185,83 @@ bool Tablero::casillaAtacada(int casilla, int turno) {
         }
     }
     return false;
-}
+}*/
 
-std::vector<u_short> Tablero::generar_movimientos(int turno) {
-    std::vector<u_short> movimientos;
-
+void Tablero::generar_movimientos(int turno, const int ply) {
+    cantMovesGenerados[ply] = -1;
     //turno = 0 es blancas, turno = 1 es negras
     if (turno == 0) {
         U64 bitboardTemp;
 
         bitboardTemp = bitboards[1]; //bitboard de la dama blanca
-        obtener_movimientos_dama_blanca(movimientos, bitboardTemp);
+        obtener_movimientos_dama_blanca(ply, bitboardTemp);
 
         bitboardTemp = bitboards[2]; //bitboard de las torres blancas
-        obtener_movimientos_torre_blanca(movimientos, bitboardTemp);
+        obtener_movimientos_torre_blanca(ply, bitboardTemp);
 
         bitboardTemp = bitboards[3]; //bitboard de los alfiles blancos
-        obtener_movimientos_alfil_blanco(movimientos, bitboardTemp);
+        obtener_movimientos_alfil_blanco(ply, bitboardTemp);
 
-        obtener_movimientos_rey_blanco(movimientos);
-        obtener_movimientos_caballo_blanco(movimientos);
-        obtener_movimientos_peon_blanco(movimientos);
+        obtener_movimientos_rey_blanco(ply);
+        obtener_movimientos_caballo_blanco(ply);
+        obtener_movimientos_peon_blanco(ply);
 
     } else {
         U64 bitboardTemp;
 
         bitboardTemp = bitboards[7];
-        obtener_movimientos_dama_negra(movimientos, bitboardTemp);
+        obtener_movimientos_dama_negra(ply, bitboardTemp);
 
         bitboardTemp = bitboards[8];
-        obtener_movimientos_torre_negra(movimientos, bitboardTemp);
+        obtener_movimientos_torre_negra(ply, bitboardTemp);
 
         bitboardTemp = bitboards[9];
-        obtener_movimientos_alfil_negro(movimientos, bitboardTemp);
+        obtener_movimientos_alfil_negro(ply, bitboardTemp);
 
-        obtener_movimientos_caballo_negro(movimientos);
-        obtener_movimientos_rey_negro(movimientos);
-        obtener_movimientos_peon_negro(movimientos);
+        obtener_movimientos_caballo_negro(ply);
+        obtener_movimientos_rey_negro(ply);
+        obtener_movimientos_peon_negro(ply);
 
     }
-    return movimientos;
 }
 
-vector<u_short> &Tablero::obtener_movimientos_peon_negro(
-        vector<u_short> &movimientos) {//Movimientos de Perón... Mi general, cuánto valés!
-    peon->movimientos_legales(this, &movimientos, bitboards[11],
+void Tablero::obtener_movimientos_peon_negro(
+        int ply) {//Movimientos de Perón... Mi general, cuánto valés!
+    peon->movimientos_legales(this, ply, bitboards[11],
                               piezas_negras(),
                               piezas_blancas());
-    return movimientos;
+
 }
 
-vector<u_short> &Tablero::obtener_movimientos_rey_negro(vector<u_short> &movimientos) {
+void Tablero::obtener_movimientos_rey_negro(int ply) {
     //Movimientos de rey
-    rey->movimientos_legales(this, &movimientos, bitboards[6], piezas_negras(), piezas_blancas());
+    rey->movimientos_legales(this, ply, bitboards[6], piezas_negras(), piezas_blancas());
     if (chequearEnroqueCorto()) {
-        movimientos.push_back(operaciones_bit::crearJugada(60, 58, CASTLING));
+        U64 bitboardTemp = operaciones_bit::setBit(0, 59, 1);
+        /*if (esJaque(torre->generar_movimientos_legales(bitboardTemp, piezas_negras(), piezas_blancas(), 1), _turno)) {
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(60, 58, CASTLINGCHECK);
+        } else {*/
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(60, 58, CASTLING);
+        /*}*/
     }
     if (chequearEnroqueLargo()) {
-        movimientos.push_back(operaciones_bit::crearJugada(60, 62, CASTLING));
+        U64 bitboardTemp = operaciones_bit::setBit(0, 61, 1);
+        /*if (esJaque(torre->generar_movimientos_legales(bitboardTemp, piezas_negras(), piezas_blancas(), 1), _turno)) {
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(60, 62, CASTLINGCHECK);
+        } else {*/
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(60, 62, CASTLING);
+        /*}*/
     }
-    return movimientos;
+
 }
 
-vector<u_short> &
-Tablero::obtener_movimientos_caballo_negro(vector<u_short> &movimientos) {//Movimientos de caballo
-    caballo->obtener_movimientos(this, &movimientos, bitboards[10], piezas_negras(), piezas_blancas());
-    return movimientos;
+
+void Tablero::obtener_movimientos_caballo_negro(int ply) {//Movimientos de caballo
+    caballo->obtener_movimientos(this, ply, bitboards[10], piezas_negras(), piezas_blancas());
 }
 
 
@@ -939,7 +1271,7 @@ U64 Tablero::bitboard_movimientos_dama_negra(U64 bitboard) {
 
 }
 
-void Tablero::obtener_movimientos_dama_negra(vector<u_short> &movimientos, U64 bitboard) {//Movimientos de dama
+void Tablero::obtener_movimientos_dama_negra(int ply, U64 bitboard) {//Movimientos de dama
     bitboard = bitboards[7];
     while (bitboard > 0) {
         //Movimientos de torre
@@ -951,22 +1283,53 @@ void Tablero::obtener_movimientos_dama_negra(vector<u_short> &movimientos, U64 b
             int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
 
-            U64 maskPiezasBloqueandoDelMove =
+            U64 maskPiezasBloqueandoDelMoveTorre =
                     constantes::attackMasksTorre[casillaLlegada - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeTorre[casillaLlegada - 1]
-                        [maskPiezasBloqueandoDelMove * constantes::magicsParaTorre[casillaLlegada - 1] >> 52], 1)) {
-                /* if(ganoElNegro()){
-                     movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+            U64 maskPiezasBloqueandoDelMoveAlfil =
+                    constantes::attackMasksAlfil[casillaLlegada - 1] & (todas_las_piezas());
+            /*if (esJaque(movimientosDeTorre[casillaLlegada - 1]
+                        [maskPiezasBloqueandoDelMoveTorre * constantes::magicsParaTorre[casillaLlegada - 1] >> 52],
+                        1)) {
+                *//* if(ganoElNegro()){
+                     cantMovesGenerados[ply][ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply][ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                  }
-                 else*/ if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                 else*//* if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            } else if (esJaque((movimientosDeAlfil[casillaLlegada - 1][
+                    maskPiezasBloqueandoDelMoveAlfil * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55]), 1)) {
+                *//*if(ganoElNegro()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+                }
+                else*//* if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
+                } else {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
+                }
+            } else */if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
         }
 
@@ -980,27 +1343,59 @@ void Tablero::obtener_movimientos_dama_negra(vector<u_short> &movimientos, U64 b
             int casillaLlegada2 = operaciones_bit::LSB(jugadasEnPos2);
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada2, 1);
 
-            U64 maskPiezasBloqueandoDelMove2 = constantes::attackMasksAlfil[casillaLlegada2 - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeAlfil[casillaLlegada2 - 1]
-                        [maskPiezasBloqueandoDelMove2 * constantes::magicsParaAlfil[casillaLlegada2 - 1] >> 55], 1)) {
-                /*if(ganoElNegro()){
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada2,CHECKMATE));
+            U64 maskPiezasBloqueandoDelMoveTorre2 =
+                    constantes::attackMasksTorre[casillaLlegada2 - 1] & (todas_las_piezas());
+            U64 maskPiezasBloqueandoDelMoveAlfil2 =
+                    constantes::attackMasksAlfil[casillaLlegada2 - 1] & (todas_las_piezas());
+            /*if (esJaque(movimientosDeAlfil[casillaLlegada2 - 1]
+                        [maskPiezasBloqueandoDelMoveAlfil2 * constantes::magicsParaAlfil[casillaLlegada2 - 1] >> 55],
+                        1)) {
+                *//*if(ganoElNegro()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada2,CHECKMATE));
                 }
-                else*/ if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada2, CAPTURECHECK));
+                else*//* if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada2,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada2, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada2,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada2, CAPTURE));
+            } else if (esJaque((movimientosDeTorre[casillaLlegada2 - 1]
+            [maskPiezasBloqueandoDelMoveTorre2 * constantes::magicsParaTorre[casillaLlegada2 - 1] >> 52]), 1)) {
+                *//*if(ganoElNegro()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada2,CHECKMATE));
+                }
+                else*//* if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada2,
+                                                                                                       CAPTURECHECK);
+                } else {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada2,
+                                                                                                       CHECK);
+                }
+            } else*/ if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada2,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada2, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada2,
+                                                                                                   QUIET);
             }
         }
     }
 }
 
-void Tablero::obtener_movimientos_alfil_negro(vector<u_short> &movimientos, U64 bitboard) {
+void Tablero::obtener_movimientos_alfil_negro(int ply, U64 bitboard) {
     while (bitboard > 0) {
         int LSB = operaciones_bit::LSB(bitboard);
         U64 alfil = constantes::attackMasksAlfil[LSB - 1] & (todas_las_piezas());
@@ -1011,26 +1406,37 @@ void Tablero::obtener_movimientos_alfil_negro(vector<u_short> &movimientos, U64 
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
 
             U64 maskPiezasBloqueandoDelMove = constantes::attackMasksAlfil[casillaLlegada - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeAlfil[casillaLlegada - 1]
-                        [maskPiezasBloqueandoDelMove * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55], 1)) {
-                /*if(ganoElNegro()){
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+            /* if (esJaque(movimientosDeAlfil[casillaLlegada - 1]
+                         [maskPiezasBloqueandoDelMove * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55], 1)) {
+                 *//*if(ganoElNegro()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                 }
-                else */if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                else *//*if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            } else*/ if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
         }
     }
 }
 
-void Tablero::obtener_movimientos_torre_negra(vector<u_short> &movimientos, U64 bitboard) {//Movimientos de torre
+void Tablero::obtener_movimientos_torre_negra(int ply, U64 bitboard) {//Movimientos de torre
     while (bitboard > 0) {
         int LSB = operaciones_bit::LSB(bitboard);
         U64 torre = constantes::attackMasksTorre[LSB - 1] & (todas_las_piezas());
@@ -1041,52 +1447,77 @@ void Tablero::obtener_movimientos_torre_negra(vector<u_short> &movimientos, U64 
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
 
             U64 maskPiezasBloqueandoDelMove = constantes::attackMasksTorre[casillaLlegada - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeTorre[casillaLlegada - 1]
+            /*if (esJaque(movimientosDeTorre[casillaLlegada - 1]
                         [maskPiezasBloqueandoDelMove * constantes::magicsParaTorre[casillaLlegada - 1] >> 52], 1)) {
-                /*if(ganoElNegro()){
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+                *//*if(ganoElNegro()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                 }
-                else*/ if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                else*//* if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            } else*/ if ((casillaLlegadaBitboard & piezas_blancas()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
         }
     }
 }
 
-vector<u_short> &Tablero::obtener_movimientos_peon_blanco(vector<u_short> &movimientos) {
+void Tablero::obtener_movimientos_peon_blanco(int ply) {
 
     //Generar movimientos de peón
-    peon->movimientos_legales(this, &movimientos, bitboards[5],
+    peon->movimientos_legales(this, ply, bitboards[5],
                               piezas_blancas(),
                               piezas_negras());
-    return movimientos;
+
 }
 
-vector<u_short> &Tablero::obtener_movimientos_rey_blanco(vector<u_short> &movimientos) {
+void Tablero::obtener_movimientos_rey_blanco(int ply) {
     //Generar movimientos de rey
-    rey->movimientos_legales(this, &movimientos, bitboards[0], piezas_blancas(), piezas_negras());
+    rey->movimientos_legales(this, ply, bitboards[0], piezas_blancas(), piezas_negras());
     if (chequearEnroqueCorto()) {
-        movimientos.push_back(operaciones_bit::crearJugada(4, 2, CASTLING));
+        U64 bitboardTemp = operaciones_bit::setBit(0, 3, 1);
+        /*if (esJaque(torre->generar_movimientos_legales(bitboardTemp, piezas_blancas(), piezas_negras(), 0), _turno)) {
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4, 2, CASTLINGCHECK);
+        } else {*/
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4, 2, CASTLING);
+        /*}*/
     }
     if (chequearEnroqueLargo()) {
-        movimientos.push_back(operaciones_bit::crearJugada(4, 6, CASTLING));
+        U64 bitboardTemp = operaciones_bit::setBit(0, 5, 1);
+        /*if (esJaque(torre->generar_movimientos_legales(bitboardTemp, piezas_blancas(), piezas_negras(), 0), _turno)) {
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4, 6, CASTLINGCHECK);
+        } else {*/
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4, 6, CASTLING);
+        /*}*/
     }
-    return movimientos;
+
 }
 
-vector<u_short> &Tablero::obtener_movimientos_caballo_blanco(vector<u_short> &movimientos) {
-    caballo->obtener_movimientos(this, &movimientos, bitboards[4], piezas_blancas(), piezas_negras());
-    return movimientos;
+void Tablero::obtener_movimientos_caballo_blanco(int ply) {
+    caballo->obtener_movimientos(this, ply, bitboards[4], piezas_blancas(), piezas_negras());
+
 }
 
-void Tablero::obtener_movimientos_dama_blanca(vector<u_short> &movimientos, U64 bitboard) {
+void Tablero::obtener_movimientos_dama_blanca(int ply, U64 bitboard) {
     while (bitboard > 0) {
         //Primero se generan los "movimientos de torre" para la dama
         int LSB = operaciones_bit::LSB(bitboard);
@@ -1097,22 +1528,54 @@ void Tablero::obtener_movimientos_dama_blanca(vector<u_short> &movimientos, U64 
             int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
 
-            U64 maskPiezasBloqueandoDelMove = constantes::attackMasksTorre[casillaLlegada - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeTorre[casillaLlegada - 1]
-                        [maskPiezasBloqueandoDelMove * constantes::magicsParaTorre[casillaLlegada - 1] >> 52], 0)) {
-                /* if(ganoELBlanco()){
-                     movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+            U64 maskPiezasBloqueandoDelMoveTorre =
+                    constantes::attackMasksTorre[casillaLlegada - 1] & (todas_las_piezas());
+            U64 maskPiezasBloqueandoDelMoveAlfil =
+                    constantes::attackMasksAlfil[casillaLlegada - 1] & (todas_las_piezas());
+            /*if (esJaque(movimientosDeTorre[casillaLlegada - 1]
+                        [maskPiezasBloqueandoDelMoveTorre * constantes::magicsParaTorre[casillaLlegada - 1] >> 52],
+                        0)) {
+                *//* if(ganoELBlanco()){
+                     cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                  }
-                 else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                 else*//* if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
 
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            } else if (esJaque((movimientosDeAlfil[casillaLlegada - 1]
+            [maskPiezasBloqueandoDelMoveAlfil * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55]), 0)) {
+                *//*if(ganoELBlanco()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+                }
+                else*//* if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
+                } else {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
+                }
+            } else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
         }
 
@@ -1124,27 +1587,59 @@ void Tablero::obtener_movimientos_dama_blanca(vector<u_short> &movimientos, U64 
             int casillaLlegada = operaciones_bit::LSB(jugadasEnPos2);
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
 
-            U64 maskPiezasBloqueandoDelMove = constantes::attackMasksAlfil[casillaLlegada - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeAlfil[casillaLlegada - 1]
-                        [maskPiezasBloqueandoDelMove * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55], 0)) {
-                /*if(ganoELBlanco()){
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+            U64 maskPiezasBloqueandoDelMoveTorre =
+                    constantes::attackMasksAlfil[casillaLlegada - 1] & (todas_las_piezas());
+            U64 maskPiezasBloqueandoDelMoveAlfil =
+                    constantes::attackMasksTorre[casillaLlegada - 1] & (todas_las_piezas());
+            /* if (esJaque(movimientosDeAlfil[casillaLlegada - 1]
+                         [maskPiezasBloqueandoDelMoveAlfil * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55],
+                         0)) {
+                 *//*if(ganoELBlanco()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                 }
-                else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                else*//* if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            } else if (esJaque((movimientosDeTorre[casillaLlegada - 1]
+            [maskPiezasBloqueandoDelMoveTorre * constantes::magicsParaTorre[casillaLlegada - 1] >> 52]), 0)) {
+                *//*if(ganoELBlanco()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+                }
+                else*//* if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
+                } else {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
+                }
+            } else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
         }
     }
 }
 
-void Tablero::obtener_movimientos_alfil_blanco(vector<u_short> &movimientos, U64 bitboard) {
+void Tablero::obtener_movimientos_alfil_blanco(int ply, U64 bitboard) {
     while (bitboard > 0) {
         int LSB = operaciones_bit::LSB(bitboard);
         U64 alfil = constantes::attackMasksAlfil[LSB - 1] & (todas_las_piezas());
@@ -1155,26 +1650,37 @@ void Tablero::obtener_movimientos_alfil_blanco(vector<u_short> &movimientos, U64
             U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
 
             U64 maskPiezasBloqueandoDelMove = constantes::attackMasksAlfil[casillaLlegada - 1] & (todas_las_piezas());
-            if (esJaque(movimientosDeAlfil[casillaLlegada - 1]
+            /*if (esJaque(movimientosDeAlfil[casillaLlegada - 1]
                         [maskPiezasBloqueandoDelMove * constantes::magicsParaAlfil[casillaLlegada - 1] >> 55], 0)) {
-                /*if(ganoELBlanco()){
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+                *//*if(ganoELBlanco()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                 }
-                else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                else*//* if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
                 }
-            } else if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            } else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             } else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
         }
     }
 }
 
-void Tablero::obtener_movimientos_torre_blanca(vector<u_short> &movimientos, U64 bitboard) {
+void Tablero::obtener_movimientos_torre_blanca(int ply, U64 bitboard) {
     while (bitboard > 0) {
         //Se obtiene la casilla de la torre más próxima empezando desde la derecha del bitboard
         int LSB = operaciones_bit::LSB(bitboard);
@@ -1200,28 +1706,39 @@ void Tablero::obtener_movimientos_torre_blanca(vector<u_short> &movimientos, U64
 
             //Si desde la casilla donde arriba la torre se puede atacar al rey enemigo, se agrega como jaque
             // Si además se toma una pieza rival, se agrega como CAPTURECHECK
-            if (esJaque(movimientosDeTorre[casillaLlegada - 1]
+            /*if (esJaque(movimientosDeTorre[casillaLlegada - 1]
                         [maskPiezasBloqueandoDelMove * constantes::magicsParaTorre[casillaLlegada - 1] >> 52], 0)) {
-                /*if(ganoELBlanco()){
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
+                *//*if(ganoELBlanco()){
+                    cantMovesGenerados[ply]++;
+movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,casillaLlegada,CHECKMATE));
                 }
-                else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURECHECK));
+                else*//* if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CAPTURECHECK);
                 } else {
-                    movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CHECK));
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB,
+                                                                                                       casillaLlegada,
+                                                                                                       CHECK);
 
                 }
 
-            }
+            }*/
 
-                //Si se toma una pieza rival, se agrega como CAPTURE
-            else if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+            //Si se toma una pieza rival, se agrega como CAPTURE
+            /* else*/ if ((casillaLlegadaBitboard & piezas_negras()) > 0) {
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   CAPTURE);
             }
 
                 //Si no se cumple ninguna de las condiciones anteriores, es un movimiento "QUIET"
             else {
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, QUIET));
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(LSB, casillaLlegada,
+                                                                                                   QUIET);
             }
 
         }
@@ -1836,21 +2353,47 @@ bool Tablero::reyPropioEnJaque(int color) {
     U64 reyPropio = this->reyPropio(color);
 
     if (color == 0) {
-        U64 movimientosDamaNegra = bitboard_movimientos_dama_negra(bitboards[7]);
-        if ((movimientosDamaNegra & reyPropio) > 0) {
+        U64 bitboardDelRey = bitboards[0];
+
+        U64 movimientosPosibles = bitboard_movimientos_torre_blanca(bitboardDelRey);
+        if ((movimientosPosibles & bitboards[7]) || (movimientosPosibles & bitboards[8])) {
             return true;
         }
-        U64 movimientosTorreNegra = bitboard_movimientos_torre_negra(bitboards[8]);
-        if ((movimientosTorreNegra & reyPropio) > 0) {
-            return true;
-        }
-        U64 movimientosAlfilNegro = bitboard_movimientos_alfil_negro(bitboards[9]);
-        if ((movimientosAlfilNegro & reyPropio) > 0) {
+        movimientosPosibles = bitboard_movimientos_alfil_blanco(bitboardDelRey);
+        if ((movimientosPosibles & bitboards[7]) || (movimientosPosibles & bitboards[9])) {
             return true;
         }
 
+        movimientosPosibles = bitboard_movimientos_caballo_blanco(bitboardDelRey);
+        if (movimientosPosibles & bitboards[10]) {
+            return true;
+        }
 
-        U64 movimientosCaballoNegro = bitboard_movimientos_caballo_negro(bitboards[10]);
+        /* U64 movimientosDamaNegra = bitboard_movimientos_dama_negra(bitboards[7]);
+         if ((movimientosDamaNegra & reyPropio) > 0) {
+             return true;
+         }
+         U64 movimientosTorreNegra = bitboard_movimientos_torre_negra(bitboards[8]);
+         if ((movimientosTorreNegra & reyPropio) > 0) {
+             return true;
+         }
+         U64 movimientosAlfilNegro = bitboard_movimientos_alfil_negro(bitboards[9]);
+         if ((movimientosAlfilNegro & reyPropio) > 0) {
+             return true;
+         }*/
+
+        if ((((bitboardDelRey & ~constantes::AFile) << 9) | ((bitboardDelRey & ~constantes::HFile) << 7)) &
+            (bitboards[11])) {
+            return true;
+        }
+
+        movimientosPosibles = bitboard_movimientos_rey_blanco(bitboardDelRey);
+
+        if (movimientosPosibles & bitboards[6]) {
+            return true;
+        }
+
+        /*U64 movimientosCaballoNegro = bitboard_movimientos_caballo_negro(bitboards[10]);
 
         if ((movimientosCaballoNegro & reyPropio) > 0) {
             return true;
@@ -1865,45 +2408,86 @@ bool Tablero::reyPropioEnJaque(int color) {
         U64 movimientosReyNegro = bitboard_movimientos_rey_negro(bitboards[6]);
         if((movimientosReyNegro & reyPropio) > 0){
             return true;
-        }
+        }*/
 
     } else {
-        U64 movimientosDamaBlanca = bitboard_movimientos_dama_blanca(bitboards[1]);
 
-        if ((movimientosDamaBlanca & reyPropio) > 0) {
+        U64 bitboardDelRey = bitboards[6];
+
+        U64 movimientosPosibles = bitboard_movimientos_torre_negra(bitboardDelRey);
+        if ((movimientosPosibles & bitboards[1]) || (movimientosPosibles & bitboards[2])) {
+            return true;
+        }
+        movimientosPosibles = bitboard_movimientos_alfil_negro(bitboardDelRey);
+        if ((movimientosPosibles & bitboards[1]) || (movimientosPosibles & bitboards[3])) {
             return true;
         }
 
-        U64 movimientosTorreBlanca = bitboard_movimientos_torre_blanca(bitboards[2]);
-
-        if ((movimientosTorreBlanca & reyPropio) > 0) {
+        movimientosPosibles = bitboard_movimientos_caballo_negro(bitboardDelRey);
+        if (movimientosPosibles & bitboards[4]) {
             return true;
         }
 
-        U64 movimientosAlfilBlanco = bitboard_movimientos_alfil_blanco(bitboards[3]);
+        /*U64 movimientosDamaNegra = bitboard_movimientos_dama_negra(bitboards[7]);
+        if ((movimientosDamaNegra & reyPropio) > 0) {
+            return true;
+        }
+        U64 movimientosTorreNegra = bitboard_movimientos_torre_negra(bitboards[8]);
+        if ((movimientosTorreNegra & reyPropio) > 0) {
+            return true;
+        }
+        U64 movimientosAlfilNegro = bitboard_movimientos_alfil_negro(bitboards[9]);
+        if ((movimientosAlfilNegro & reyPropio) > 0) {
+            return true;
+        }*/
 
-        if ((movimientosAlfilBlanco & reyPropio) > 0) {
+        if ((((bitboardDelRey & ~constantes::HFile) >> 9) | ((bitboardDelRey & ~constantes::AFile) >> 7)) &
+            (bitboards[5])) {
             return true;
         }
 
+        movimientosPosibles = bitboard_movimientos_rey_negro(bitboardDelRey);
 
-        U64 movimientosCaballoBlanco = bitboard_movimientos_caballo_blanco(bitboards[4]);
-
-        if ((movimientosCaballoBlanco & reyPropio) > 0) {
+        if (movimientosPosibles & bitboards[0]) {
             return true;
         }
 
-        U64 movimientosPeonBlanco = bitboard_movimientos_peon_blanco(bitboards[5]);
+        /* U64 movimientosDamaBlanca = bitboard_movimientos_dama_blanca(bitboards[1]);
 
-        if ((movimientosPeonBlanco & reyPropio) > 0) {
-            return true;
-        }
+         if ((movimientosDamaBlanca & reyPropio) > 0) {
+             return true;
+         }
 
-        U64 movimientosReyBlanco = bitboard_movimientos_rey_blanco(bitboards[0]);
+         U64 movimientosTorreBlanca = bitboard_movimientos_torre_blanca(bitboards[2]);
 
-        if((movimientosReyBlanco & reyPropio) > 0){
-            return true;
-        }
+         if ((movimientosTorreBlanca & reyPropio) > 0) {
+             return true;
+         }
+
+         U64 movimientosAlfilBlanco = bitboard_movimientos_alfil_blanco(bitboards[3]);
+
+         if ((movimientosAlfilBlanco & reyPropio) > 0) {
+             return true;
+         }
+
+
+         U64 movimientosCaballoBlanco = bitboard_movimientos_caballo_blanco(bitboards[4]);
+
+         if ((movimientosCaballoBlanco & reyPropio) > 0) {
+             return true;
+         }
+
+         U64 movimientosPeonBlanco = bitboard_movimientos_peon_blanco(bitboards[5]);
+
+         if ((movimientosPeonBlanco & reyPropio) > 0) {
+             return true;
+         }
+
+         U64 movimientosReyBlanco = bitboard_movimientos_rey_blanco(bitboards[0]);
+
+         if((movimientosReyBlanco & reyPropio) > 0){
+             return true;
+         }*/
 
 
     }
@@ -1912,14 +2496,16 @@ bool Tablero::reyPropioEnJaque(int color) {
 
 U64 Tablero::bitboard_movimientos_rey_negro(U64 bitboard) {
     U64 movimientosReyNegro = 0;
-    movimientosReyNegro |= rey -> generar_movimientos_legales(bitboard, piezas_negras(), piezas_blancas(), 1);
+    int casillaDelRey = operaciones_bit::LSB(bitboard);
+    movimientosReyNegro |= movimientosDeRey[casillaDelRey - 1];
     return movimientosReyNegro;
 
 }
 
 U64 Tablero::bitboard_movimientos_rey_blanco(U64 bitboard) {
     U64 movimientosReyBlanco = 0;
-    movimientosReyBlanco |= rey -> generar_movimientos_legales(bitboard, piezas_blancas(), piezas_negras(), 1);
+    int casillaDelRey = operaciones_bit::LSB(bitboard);
+    movimientosReyBlanco |= movimientosDeRey[casillaDelRey - 1];
     return movimientosReyBlanco;
 
 }
@@ -1938,7 +2524,6 @@ U64 Tablero::bitboard_movimientos_caballo_blanco(U64 bitboard) const {
     U64 movimientosCaballoBlanco = 0;
     while (bitboard > 0) {
         int casillaCaballoBlanco = operaciones_bit::LSB(bitboard);
-        U64 bitboardCaballo = operaciones_bit::setBit(0L, casillaCaballoBlanco, 1);
         movimientosCaballoBlanco |= movimientosDeCaballo[casillaCaballoBlanco - 1];
     }
     return movimientosCaballoBlanco;
@@ -2032,15 +2617,15 @@ U64 Tablero::obtenerAttackMapBlancas() {
 
 U64 Tablero::obtenerAttackMapNegras() {
     return bitboard_movimientos_rey_negro(bitboards[6]) | bitboard_movimientos_dama_negra(bitboards[7]) |
-    bitboard_movimientos_torre_negra(bitboards[8]) | bitboard_movimientos_alfil_negro(bitboards[9]) |
-    bitboard_movimientos_caballo_negro(bitboards[10]) | bitboard_movimientos_peon_negro(bitboards[11]);
+           bitboard_movimientos_torre_negra(bitboards[8]) | bitboard_movimientos_alfil_negro(bitboards[9]) |
+           bitboard_movimientos_caballo_negro(bitboards[10]) | bitboard_movimientos_peon_negro(bitboards[11]);
 }
 
 bool Tablero::chequearEnroqueCorto() {
     // enroque corto blancas
     if (_turno == 0) {
 
-        if (enroqueCortoBlanco.back()) {
+        if (enroqueCortoBlancas()) {
             U64 attackMapNegras = (obtenerAttackMapNegras());
             bool estaLaTorre = (bitboards[2] & 0b1ULL) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
@@ -2051,7 +2636,7 @@ bool Tablero::chequearEnroqueCorto() {
 
     } else {
 
-        if (enroqueCortoNegro.back()) {
+        if (enroqueCortoNegras()) {
             U64 attackMapBlancas = (obtenerAttackMapBlancas());
             bool estaLaTorre = (bitboards[8] & 0x100000000000000) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
@@ -2068,17 +2653,17 @@ bool Tablero::chequearEnroqueCorto() {
 bool Tablero::chequearEnroqueLargo() {
     // enroque largo blancas tas chispoton
     if (_turno == 0) {
-        if (enroqueLargoBlanco.back()) {
+        if (enroqueLargoBlancas()) {
             U64 attackMapNegras = (obtenerAttackMapNegras());
             bool estaLaTorre = (bitboards[2] & 0b10000000ULL) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
-            bool sinAtaqueRival = ((attackMapNegras & 0b1110000ULL) == 0);
+            bool sinAtaqueRival = ((attackMapNegras & 0b110000ULL) == 0);
             bool zonaLiberada = ((0b1110000ULL & todas_las_piezas()) == 0); // 1110000 es b1, c1 y d1
             return sinAtaqueRival && zonaLiberada && !reyEnJaque && estaLaTorre;
         }
     } else {
 
-        if (enroqueLargoNegro.back()) {
+        if (enroqueLargoNegras()) {
             U64 attackMapBlancas = (obtenerAttackMapBlancas());
             bool estaLaTorre = (bitboards[8] & 0x8000000000000000ULL) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
@@ -2094,102 +2679,197 @@ bool Tablero::enrocar(u_short jugada) {
 
     if (operaciones_bit::getLlegada(jugada) == 2 && chequearEnroqueCorto()) {
         actualizarMaterial(jugada);
-        enroqueCortoBlanco.push_back(false);
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-        enroqueLargoBlanco.push_back(false);
-        actualizarOcupacion(jugada);
-        actualizarZobristKey(jugada, true);
-        historialDePosiciones.push_back(zobrist);
+        setearEnroque(0, false);
 
+        /*enroqueCortoBlanco.push_back(false);*/
+        /*enroqueCortoNegro.push_back(enroqueCortoNegro.back());
+        enroqueLargoNegro.push_back(enroqueLargoNegro.back());*/
+        setearEnroque(1, false);
+        guardarEnroque();
+        /*enroqueLargoBlanco.push_back(false);*/
+        actualizarOcupacion(jugada);
+        actualizarZobristKey(jugada);
+
+        contadorJugadas++;
+        jugadas[contadorJugadas] = jugada;
+        contadorHistorialBitboards++;
+        modificacionBitboard cambios = {0,bitboards[0], 2, bitboards[2], -1, 0};
+        historialBitboards[contadorHistorialBitboards] = cambios;
         bitboards[0] = operaciones_bit::setBit(bitboards[0], 4, 0);
         bitboards[0] = operaciones_bit::setBit(bitboards[0], 2, 1);
         bitboards[2] = operaciones_bit::setBit(bitboards[2], 1, 0);
         bitboards[2] = operaciones_bit::setBit(bitboards[2], 3, 1);
+/*
         _jugadas.push_back(jugada);
-        historialPosiciones.push_back(bitboards);
+*/
+
+
+        historialEnPassant.push_back(-1);
         _turno = 1;
 
 
         enrocoBlancas = true;
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+
+
+        if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getSalida(jugada)] << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getLlegada(jugada)] << endl;
+        exit(0);}*/
+
         return true;
 
     } else if (operaciones_bit::getLlegada(jugada) == 6 && chequearEnroqueLargo()) {
         actualizarMaterial(jugada);
+        setearEnroque(0, false);
+/*
         enroqueCortoBlanco.push_back(false);
-        enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-        enroqueLargoNegro.push_back(enroqueLargoNegro.back());
+*/
+        /*enroqueCortoNegro.push_back(enroqueCortoNegro.back());
+        enroqueLargoNegro.push_back(enroqueLargoNegro.back());*/
+        setearEnroque(1, false);
+        guardarEnroque();
+/*
         enroqueLargoBlanco.push_back(false);
+*/
         actualizarOcupacion(jugada);
-        actualizarZobristKey(jugada, true);
-        historialDePosiciones.push_back(zobrist);
+        actualizarZobristKey(jugada);
 
+        contadorHistorialBitboards++;
+        modificacionBitboard cambios = {0,bitboards[0], 2, bitboards[2], -1, 0};
+        historialBitboards[contadorHistorialBitboards] = cambios;
         bitboards[0] = operaciones_bit::setBit(bitboards[0], 4, 0);
         bitboards[0] = operaciones_bit::setBit(bitboards[0], 6, 1);
         bitboards[2] = operaciones_bit::setBit(bitboards[2], 8, 0);
         bitboards[2] = operaciones_bit::setBit(bitboards[2], 5, 1);
+/*
         _jugadas.push_back(jugada);
-        historialPosiciones.push_back(bitboards);
+*/
+        contadorJugadas++;
+        jugadas[contadorJugadas] = jugada;
+
+        historialEnPassant.push_back(-1);
         _turno = 1;
         enrocoBlancas = true;
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
 
+       if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getSalida(jugada)] << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getLlegada(jugada)] << endl;
+        exit(0);}*/
 
         return true;
     } else if (operaciones_bit::getLlegada(jugada) == 58 && chequearEnroqueCorto()) {
         actualizarMaterial(jugada);
+/*
         enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(false);
-        enroqueLargoNegro.push_back(false);
-        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
-        actualizarOcupacion(jugada);
-        actualizarZobristKey(jugada, true);
-        historialDePosiciones.push_back(zobrist);
+*/
 
+        setearEnroque(2, false);
+        setearEnroque(3, false);
+        guardarEnroque();
+        /*enroqueCortoNegro.push_back(false);
+        enroqueLargoNegro.push_back(false);*/
+/*
+        enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+*/
+        actualizarOcupacion(jugada);
+        actualizarZobristKey(jugada);
+
+        historialEnPassant.push_back(-1);
+
+        contadorHistorialBitboards++;
+        modificacionBitboard cambios = {6,bitboards[6], 8, bitboards[8], -1, 0};
+        historialBitboards[contadorHistorialBitboards] = cambios;
         bitboards[6] = operaciones_bit::setBit(bitboards[6], 60, 0);
         bitboards[6] = operaciones_bit::setBit(bitboards[6], 58, 1);
         bitboards[8] = operaciones_bit::setBit(bitboards[8], 57, 0);
         bitboards[8] = operaciones_bit::setBit(bitboards[8], 59, 1);
+/*
         _jugadas.push_back(jugada);
-        historialPosiciones.push_back(bitboards);
+*/
+        contadorJugadas++;
+        jugadas[contadorJugadas] = jugada;
+
         _turno = 0;
 
         enrocoNegras = true;
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+
+        if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getSalida(jugada)] << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getLlegada(jugada)] << endl;
+        exit(0);}*/
         return true;
     } else if (operaciones_bit::getLlegada(jugada) == 62 && chequearEnroqueLargo()) {
         actualizarMaterial(jugada);
+/*
         enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-        enroqueCortoNegro.push_back(false);
-        enroqueLargoNegro.push_back(false);
+*/
+        /*enroqueCortoNegro.push_back(false);
+        enroqueLargoNegro.push_back(false);*/
+        setearEnroque(2, false);
+        setearEnroque(3, false);
+        guardarEnroque();
+/*
         enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+*/
         actualizarOcupacion(jugada);
-        actualizarZobristKey(jugada, true);
-        historialDePosiciones.push_back(zobrist);
+        actualizarZobristKey(jugada);
 
+        historialEnPassant.push_back(-1);
+
+        contadorHistorialBitboards++;
+        modificacionBitboard cambios = {6,bitboards[6], 8, bitboards[8], -1, 0};
+        historialBitboards[contadorHistorialBitboards] = cambios;
         bitboards[6] = operaciones_bit::setBit(bitboards[6], 60, 0);
         bitboards[6] = operaciones_bit::setBit(bitboards[6], 62, 1);
         bitboards[8] = operaciones_bit::setBit(bitboards[8], 64, 0);
         bitboards[8] = operaciones_bit::setBit(bitboards[8], 61, 1);
+/*
         _jugadas.push_back(jugada);
-        historialPosiciones.push_back(bitboards);
+*/
+        contadorJugadas++;
+        jugadas[contadorJugadas] = jugada;
+
         _turno = 0;
 
         enrocoNegras = true;
+
+/*        U64 zobristActual = zobristKey();
+        U64 nuevaZobristKey = zobrist;
+        if(nuevaZobristKey != zobristActual){
+            cout << "Zobrist erronea" << endl;
+            imprimirFen();
+            cout << zobristActual << "-----" << nuevaZobristKey << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getSalida(jugada)] << endl;
+            cout << constantes::NumeroACasilla[operaciones_bit::getLlegada(jugada)] << endl;
+        exit(0);}*/
+
 
         return true;
     }
     return false;
 }
 
+/*
 void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
     U64 salidaBitboard = operaciones_bit::setBit(0L, salida, 1);
     U64 llegadaBitboard = operaciones_bit::setBit(0L, llegada, 1);
     u_short aRealizar = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
-    if (_jugadas.size() > 0) {
-        if (operaciones_bit::getSalida(_jugadas.back()) == salida &&
-            operaciones_bit::getLlegada(_jugadas.back()) == llegada) {
-            return;
-        }
-    }
+
 
     int tipoDePieza = obtenerTipoDePieza(salida);
     if (tipoDePieza == REY) {
@@ -2214,9 +2894,16 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
 
     actualizarMaterial(aRealizar);
     actualizarOcupacion(aRealizar);
-    actualizarZobristKey(aRealizar, true);
-    actualizarCantMovesPiezasMenores(aRealizar, true);
+    actualizarZobristKey(aRealizar);
+    /// Momentánemente la función de evaluación no utiliza la cantidad
+    /// de movimientos realizados por piezas menores, por lo que no vale la pena
+    /// realizar el cálculo.
+    //actualizarCantMovesPiezasMenores(aRealizar, true);
+*/
+/*
     historialDePosiciones.push_back(zobrist);
+*//*
+
 
     for (int k = 0; k < 12; k++) {
 
@@ -2232,10 +2919,12 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
     u_short jugada = operaciones_bit::crearJugada(salida, llegada, 0);
     _jugadas.push_back(jugada);
     historialPosiciones.push_back(bitboards);
-    enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
+   */
+/* enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
     enroqueCortoNegro.push_back(enroqueCortoNegro.back());
     enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-    enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
+    enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());*//*
+
 
     if (tipoDeJugada == CHECKMATE) {
         if (_turno == 0) {
@@ -2248,6 +2937,7 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
     cambiarTurno();
 
 }
+*/
 
 void Tablero::cambiarTurno() {
     if (_turno == 0) {
@@ -2257,7 +2947,7 @@ void Tablero::cambiarTurno() {
     }
 }
 
-bool Tablero::ganoELBlanco() {
+/*bool Tablero::ganoELBlanco() {
     if (reyPropioEnJaque(1)) {
         vector<u_short> movimientos = generar_movimientos(1);
         int contador = 0;
@@ -2309,14 +2999,14 @@ bool Tablero::ganoElNegro() {
     } else {
         return false;
     }
-}
+}*/
 
 
 U64 Tablero::zobristKey() {
-    if (zobrist != 0) {
+/*    if (zobrist != 0) {
         return zobrist;
 
-    }
+    }*/
     U64 key = 0ULL;
     for (int i = 0; i < 12; i++) {
         U64 bitboard = bitboards[i];
@@ -2328,282 +3018,488 @@ U64 Tablero::zobristKey() {
     if (_turno == 1) {
         key ^= constantes::mueveElNegro;
     }
-    if (enroqueLargoBlanco.back()) {
+    if (enroqueLargoBlancas()) {
         key ^= constantes::enroqueLargoBlanco;
     }
-    if (enroqueCortoBlanco.back()) {
+    if (enroqueCortoBlancas()) {
         key ^= constantes::enroqueCortoBlanco;
     }
-    if (enroqueLargoNegro.back()) {
+    if (enroqueLargoNegras()) {
         key ^= constantes::enroqueLargoNegro;
     }
 
-    if (enroqueCortoNegro.back()) {
+    if (enroqueCortoNegras()) {
         key ^= constantes::enroqueCortoNegro;
     }
-    if (!(_jugadas.empty()) && tipoDePieza(_jugadas.back()) == PEON) {
+    /*if (!(_jugadas.empty()) && obtenerTipoDePieza(operaciones_bit::getLlegada(_jugadas.back())) == PEON) {
         int salida = operaciones_bit::getSalida(_jugadas.back());
         int llegada = operaciones_bit::getLlegada(_jugadas.back());
         int tipoDeMovimiento = operaciones_bit::getTipoDeJugada(_jugadas.back());
         if (tipoDeMovimiento == QUIET || tipoDeMovimiento == CHECK) {
             if (abs(salida - llegada) == 16) {
                 int columnaDeEnpassant = (llegada % 8) - 1;
-                if (columnaDeEnpassant == 1) {
+                if(columnaDeEnpassant == -1) {
                     key ^= constantes::enPassant[7];
-                } else {
-                    key ^= constantes::enPassant[columnaDeEnpassant - 1];
                 }
+                else {
+                    key ^= constantes::enPassant[columnaDeEnpassant];
+                }
+
+
             }
         }
+    }*/
+    if (!historialEnPassant.empty() && historialEnPassant.back() != -1) {
+        key ^= constantes::enPassant[historialEnPassant.back()];
     }
+
+
+
     return key;
 
 }
 
-vector<u_short> Tablero::generar_capturas(int turno) {
+void Tablero::generar_capturas(int turno, int ply) {
     vector<u_short> movimientos;
-    //turno = 0 es blancas, turno = 1 es negras
     if (turno == 0) {
+        U64 torres = bitboards[2];
+        while (torres > 0) {
+            int casilla = operaciones_bit::LSB(torres);
+            U64 movimientosDeLaTorre = bitboard_movimientos_torre_blanca(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDeLaTorre = movimientosDeLaTorre & piezasRivales();
+            while (movimientosDeLaTorre > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDeLaTorre);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                /*if (esJaque(bitboard_movimientos_torre_blanca(bitboardMovimiento), turno)) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                       casillaAtacada,
+                                                                                                       CAPTURECHECK);
+                } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
+            }
+        }
 
-        //Generar movimientos de torres
-        U64 bitboardTemp = bitboards[2]; //bitboard de torres
+        U64 alfiles = bitboards[3];
+        while (alfiles > 0) {
+            int casilla = operaciones_bit::LSB(alfiles);
+            U64 movimientosDelAlfil = bitboard_movimientos_alfil_blanco(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDelAlfil = movimientosDelAlfil & piezasRivales();
+            while (movimientosDelAlfil > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDelAlfil);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                /*if (esJaque(bitboard_movimientos_alfil_blanco(bitboardMovimiento), turno)) {
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                       casillaAtacada,
+                                                                                                       CAPTURECHECK);
+                } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
+            }
+        }
 
-        //Mientras haya alguna torre en el tablero:
-        while (bitboardTemp > 0) {
-            //Se obtiene la casilla de la torre más próxima al bit menos significativo
-            int LSB = operaciones_bit::LSB(bitboardTemp);
+        U64 caballos = bitboards[4];
+        while (caballos > 0) {
+            int casilla = operaciones_bit::LSB(caballos);
+            U64 movimientosDelCaballo = bitboard_movimientos_caballo_blanco(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDelCaballo = movimientosDelCaballo & piezasRivales();
+            while (movimientosDelCaballo > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDelCaballo);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                /* if (esJaque(bitboard_movimientos_caballo_blanco(bitboardMovimiento), turno)) {
+                     cantMovesGenerados[ply]++;
+                     movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                        casillaAtacada,
+                                                                                                        CAPTURECHECK);
+                 } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
+            }
+        }
 
-            //Se obtiene la máscara de la torre en la casilla correspondiente
-            U64 torre = constantes::attackMasksTorre[LSB - 1] & (todas_las_piezas());
+        U64 damas = bitboards[1];
 
-            //Se obtienen los movimientos posibles de la torre mediante la tabla de hash
-            U64 jugadasEnPos = movimientosDeTorre[LSB - 1][torre * constantes::magicsParaTorre[LSB - 1] >> (64 - 12)];
+        while (damas > 0) {
+            int casilla = operaciones_bit::LSB(damas);
+            U64 movimientosDeLaDama = bitboard_movimientos_dama_blanca(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDeLaDama = movimientosDeLaDama & piezasRivales();
+            while (movimientosDeLaDama > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDeLaDama);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                /* if (esJaque(bitboard_movimientos_dama_blanca(bitboardMovimiento), turno)) {
+                     cantMovesGenerados[ply]++;
+                     movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                        casillaAtacada,
+                                                                                                        CAPTURECHECK);
+                 } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
+            }
+        }
 
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_negras();
+        U64 peones = bitboards[5];
 
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
+        while (peones > 0) {
+            int casilla = operaciones_bit::LSB(peones);
+            U64 movimientosDelPeon = bitboard_movimientos_peon_blanco(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDelPeon = movimientosDelPeon & piezasRivales();
+            while (movimientosDelPeon > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDelPeon);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                U64 bitboardPeon = operaciones_bit::setBit(0L, casilla, 1);
+
+                //Chequeamos si es una promoción
+
+                if (casillaAtacada > 55) {
+                    if (casillaAtacada == (casilla + 7)) {
+                        /*if (esJaque(bitboard_movimientos_dama_blanca(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_torre_blanca(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_alfil_blanco(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_caballo_blanco(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+                    } else {
+                        /*if (esJaque(bitboard_movimientos_dama_blanca(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                               casillaAtacada,
+                                                                                                               CPIC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_torre_blanca(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                               casillaAtacada,
+                                                                                                               CPIC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_alfil_blanco(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                               casillaAtacada,
+                                                                                                               CPIC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_caballo_blanco(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                               casillaAtacada,
+                                                                                                               CPIC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+                    }
+                } else {
+                    /* if (esJaque(Peon::capturas(casillaAtacada, piezasPropias(), piezasRivales(), 0), turno)) {
+                         cantMovesGenerados[ply]++;
+                         movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                            casillaAtacada,
+                                                                                                            CAPTURECHECK);
+                     } else {*/
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                       casillaAtacada,
+                                                                                                       CAPTURE);
+                    /*}*/
+                }
 
 
             }
 
         }
 
-        //Generar movimientos de alfiles. Aplica la misma lógica que en el caso de la torre.
-        bitboardTemp = bitboards[3];
-        while (bitboardTemp > 0) {
-            int LSB = operaciones_bit::LSB(bitboardTemp);
-            U64 alfil = constantes::attackMasksAlfil[LSB - 1] & (todas_las_piezas());
-            U64 jugadasEnPos = movimientosDeAlfil[LSB - 1][alfil * constantes::magicsParaAlfil[LSB - 1] >> (64 - 9)];
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_negras();
+        U64 rey = bitboards[0];
+        int casilla = operaciones_bit::LSB(rey);
+        U64 movimientosDelRey = bitboard_movimientos_rey_blanco(operaciones_bit::setBit(0L, casilla, 1));
+        movimientosDelRey = movimientosDelRey & piezasRivales();
+        while (movimientosDelRey > 0) {
+            int casillaAtacada = operaciones_bit::LSB(movimientosDelRey);
+            U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+            cantMovesGenerados[ply]++;
+            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla, casillaAtacada,
+                                                                                               CAPTURE);
 
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
+        }
 
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
+    } else {
+        U64 torres = bitboards[8];
+        while (torres > 0) {
+            int casilla = operaciones_bit::LSB(torres);
+            U64 movimientosDeLaTorre = bitboard_movimientos_torre_negra(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDeLaTorre = movimientosDeLaTorre & piezasRivales();
+            while (movimientosDeLaTorre > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDeLaTorre);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                /* if (esJaque(bitboard_movimientos_torre_negra(bitboardMovimiento), turno)) {
+                     cantMovesGenerados[ply]++;
+                     movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                        casillaAtacada,
+                                                                                                        CAPTURECHECK);
+                 } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
             }
         }
 
-        //Generar movimientos de dama. Aplica la misma lógica que en el caso de la torre y alfil.
-        bitboardTemp = bitboards[1];
-        while (bitboardTemp > 0) {
-            //Primero se generan los "movimientos de torre" para la dama
-            int LSB = operaciones_bit::LSB(bitboardTemp);
-            U64 dama = constantes::attackMasksTorre[LSB - 1] & (todas_las_piezas());
-            U64 jugadasEnPos = movimientosDeTorre[LSB - 1][dama * constantes::magicsParaTorre[LSB - 1] >> (64 - 12)];
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_negras();
+        U64 alfiles = bitboards[9];
 
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
-
-                //Si se toma una pieza rival, se agrega como CAPTURE
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
-            }
-
-            //Por ultimo se generan los "movimientos de alfil" para la dama
-            U64 dama2 = constantes::attackMasksAlfil[LSB - 1] & (todas_las_piezas());
-            U64 jugadasEnPos2 = movimientosDeAlfil[LSB - 1][dama2 * constantes::magicsParaAlfil[LSB - 1] >> (64 - 9)];
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_negras();
-
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
-
-                //Si se toma una pieza rival, se agrega como CAPTURE
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
+        while (alfiles > 0) {
+            int casilla = operaciones_bit::LSB(alfiles);
+            U64 movimientosDelAlfil = bitboard_movimientos_alfil_negro(operaciones_bit::setBit(0, casilla, 1));
+            movimientosDelAlfil = movimientosDelAlfil & piezasRivales();
+            while (movimientosDelAlfil > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDelAlfil);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0, casillaAtacada, 1);
+                /* if (esJaque(bitboard_movimientos_alfil_negro(bitboardMovimiento), turno)) {
+                     cantMovesGenerados[ply]++;
+                     movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                        casillaAtacada,
+                                                                                                        CAPTURECHECK);
+                 } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
             }
         }
 
-        //Generar movimientos de caballo.
-        Caballo::capturas(this, &movimientos, bitboards[4], this->piezas_blancas(), this->piezas_negras());
+        //Quiero que me sugieras como seguir con el codigo
 
-        //Generar movimientos de rey
-        Rey::capturas(this, &movimientos, bitboards[0], this->piezas_blancas(), this->piezas_negras());
+        U64 caballos = bitboards[10];
 
-
-        //Generar movimientos de peón
-        bitboardTemp = bitboards[5];
-        while (bitboardTemp > 0) {
-            int casilla = operaciones_bit::LSB(bitboardTemp);
-            U64 posiblesCapturasBitboard = Peon::capturas(casilla, this->piezas_blancas(),
-                                                          this->piezas_negras(), 0);
-
-            posiblesCapturasBitboard = posiblesCapturasBitboard & this->piezas_negras();
-            while (posiblesCapturasBitboard > 0) {
-                int casillaLlegada = operaciones_bit::LSB(posiblesCapturasBitboard);
-                movimientos.push_back(operaciones_bit::crearJugada(casilla, casillaLlegada, CAPTURE));
+        while (caballos > 0) {
+            int casilla = operaciones_bit::LSB(caballos);
+            U64 movimientosDelCaballo = bitboard_movimientos_caballo_negro(operaciones_bit::setBit(0, casilla, 1));
+            movimientosDelCaballo = movimientosDelCaballo & piezasRivales();
+            while (movimientosDelCaballo > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDelCaballo);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0, casilla, 1);
+                /* if (esJaque(bitboard_movimientos_caballo_negro(bitboardMovimiento), turno)) {
+                     cantMovesGenerados[ply]++;
+                     movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                        casillaAtacada,
+                                                                                                        CAPTURECHECK);
+                 } else {*/
+                cantMovesGenerados[ply]++;
+                movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                   casillaAtacada,
+                                                                                                   CAPTURE);
+                /*}*/
             }
+
+
         }
+
+        U64 peones = bitboards[11];
+
+        while (peones > 0) {
+            int casilla = operaciones_bit::LSB(peones);
+            U64 movimientosDelPeon = bitboard_movimientos_peon_negro(operaciones_bit::setBit(0L, casilla, 1));
+            movimientosDelPeon = movimientosDelPeon & piezasRivales();
+            while (movimientosDelPeon > 0) {
+                int casillaAtacada = operaciones_bit::LSB(movimientosDelPeon);
+                U64 bitboardMovimiento = operaciones_bit::setBit(0L, casillaAtacada, 1);
+                U64 bitboardPeon = operaciones_bit::setBit(0L, casilla, 1);
+
+                //Chequeamos si es una promoción
+
+                if (casillaAtacada < 9) {
+                    if (casillaAtacada == (casilla - 7)) {
+                        /*if (esJaque(bitboard_movimientos_dama_negra(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_torre_negra(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_alfil_negro(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_caballo_negro(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                               casillaAtacada,
+                                                                                                               CPDC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONDER);
+                        /*}*/
+                    } else {
+                        /* if (esJaque(bitboard_movimientos_dama_negra(bitboardMovimiento), turno)) {
+                             cantMovesGenerados[ply]++;
+                             movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                                casillaAtacada,
+                                                                                                                CPIC);
+                         } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_torre_negra(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                               casillaAtacada,
+                                                                                                               CPIC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(2,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+
+                        /* if (esJaque(bitboard_movimientos_alfil_negro(bitboardMovimiento), turno)) {
+                             cantMovesGenerados[ply]++;
+                             movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                                casillaAtacada,
+                                                                                                                CPIC);
+                         } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+
+                        /*if (esJaque(bitboard_movimientos_caballo_negro(bitboardMovimiento), turno)) {
+                            cantMovesGenerados[ply]++;
+                            movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                               casillaAtacada,
+                                                                                                               CPIC);
+                        } else {*/
+                        cantMovesGenerados[ply]++;
+                        movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(4,
+                                                                                                           casillaAtacada,
+                                                                                                           PROMOTIONIZQ);
+                        /*}*/
+                    }
+                } else {
+                    /* if (esJaque(Peon::capturas(casillaAtacada, piezasPropias(), piezasRivales(), 1), turno)) {
+                         cantMovesGenerados[ply]++;
+                         movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                            casillaAtacada,
+                                                                                                            CAPTURECHECK);
+                     } else {*/
+                    cantMovesGenerados[ply]++;
+                    movimientos_generados[ply][cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla,
+                                                                                                       casillaAtacada,
+                                                                                                       CAPTURE);
+                    /*}*/
+                }
+
+
+            }
+
+        }
+
 
     }
 
-        //Generar movimientos para las negras. Sigue la misma lógica que para las blancas.
-    else {
-        //Generar movimientos de torres
-        U64 bitboardTemp = bitboards[8]; //bitboard de torres
-
-        //Mientras haya alguna torre en el tablero:
-        while (bitboardTemp > 0) {
-            //Se obtiene la casilla de la torre más próxima al bit menos significativo
-            int LSB = operaciones_bit::LSB(bitboardTemp);
-
-            //Se obtiene la máscara de la torre en la casilla correspondiente
-            U64 torre = constantes::attackMasksTorre[LSB - 1] & (todas_las_piezas());
-
-            //Se obtienen los movimientos posibles de la torre mediante la tabla de hash
-            U64 jugadasEnPos = movimientosDeTorre[LSB - 1][torre * constantes::magicsParaTorre[LSB - 1] >> (64 - 12)];
-
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_blancas();
-
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
-
-
-                //Si se toma una pieza rival, se agrega como CAPTURE
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
-            }
-
-        }
-
-        //Generar movimientos de alfiles. Aplica la misma lógica que en el caso de la torre.
-        bitboardTemp = bitboards[9];
-        while (bitboardTemp > 0) {
-            int LSB = operaciones_bit::LSB(bitboardTemp);
-            U64 alfil = constantes::attackMasksAlfil[LSB - 1] & (todas_las_piezas());
-            U64 jugadasEnPos = movimientosDeAlfil[LSB - 1][alfil * constantes::magicsParaAlfil[LSB - 1] >> (64 - 9)];
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_blancas();
-
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
-
-                //Si se toma una pieza rival, se agrega como CAPTURE
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
-            }
-        }
-
-        //Generar movimientos de dama. Aplica la misma lógica que en el caso de la torre y alfil.
-        bitboardTemp = bitboards[7];
-        while (bitboardTemp > 0) {
-            //Primero se generan los "movimientos de torre" para la dama
-            int LSB = operaciones_bit::LSB(bitboardTemp);
-            U64 dama = constantes::attackMasksTorre[LSB - 1] & (todas_las_piezas());
-            U64 jugadasEnPos = movimientosDeTorre[LSB - 1][dama * constantes::magicsParaTorre[LSB - 1] >> (64 - 12)];
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_blancas();
-
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
-
-                //Si se toma una pieza rival, se agrega como CAPTURE
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
-            }
-
-            //Por ultimo se generan los "movimientos de alfil" para la dama
-            U64 dama2 = constantes::attackMasksAlfil[LSB - 1] & (todas_las_piezas());
-            U64 jugadasEnPos2 = movimientosDeAlfil[LSB - 1][dama2 * constantes::magicsParaAlfil[LSB - 1] >> (64 - 9)];
-            //Se toman solo las capturas:
-            jugadasEnPos = jugadasEnPos & piezas_blancas();
-
-            //Se itera sobre cada movimiento posible
-            while (jugadasEnPos > 0) {
-                //Se obtiene la casilla de llegada del movimiento como int
-                int casillaLlegada = operaciones_bit::LSB(jugadasEnPos);
-                U64 casillaLlegadaBitboard = operaciones_bit::setBit(0L, casillaLlegada, 1);
-
-                //Si se toma una pieza rival, se agrega como CAPTURE
-                movimientos.push_back(operaciones_bit::crearJugada(LSB, casillaLlegada, CAPTURE));
-
-
-            }
-        }
-
-        //Generar movimientos de caballo.
-        Caballo::capturas(this, &movimientos, bitboards[10], this->piezas_negras(), this->piezas_blancas());
-
-        //Generar movimientos de rey
-        Rey::capturas(this, &movimientos, bitboards[6], this->piezas_negras(), this->piezas_blancas());
-
-
-        //Generar movimientos de peón
-        bitboardTemp = bitboards[11];
-        while (bitboardTemp > 0) {
-            int casilla = operaciones_bit::LSB(bitboardTemp);
-            U64 posiblesCapturasBitboard = Peon::capturas(casilla,
-                                                          this->piezas_negras(), this->piezas_blancas(), 1);
-            posiblesCapturasBitboard = posiblesCapturasBitboard & this->piezas_blancas();
-
-            while (posiblesCapturasBitboard > 0) {
-                int casillaLlegada = operaciones_bit::LSB(posiblesCapturasBitboard);
-                movimientos.push_back(operaciones_bit::crearJugada(casilla, casillaLlegada, CAPTURE));
-            }
-        }
-
-    }
-
-
-
-
-
-    /*//Se ordenan los movimientos según el orden del enum "tipoDeJugada"
-    std::sort(movimientos.begin(),movimientos.end());*/
-    return movimientos;
 
 }
 
@@ -2707,13 +3603,13 @@ float Tablero::calcularOcupacionAlfil(int color) {
         U64 bitboardAlfil = bitboards[3];
         while (bitboardAlfil > 0) {
             int casilla = operaciones_bit::LSB(bitboardAlfil);
-            valor += constantes::ocupacionAlfilBlanco[casilla - 1];
+            valor += constantes::ocupacionAlfil[casilla - 1];
         }
     } else {
         U64 bitboardAlfil = bitboards[9];
         while (bitboardAlfil > 0) {
             int casilla = operaciones_bit::LSB(bitboardAlfil);
-            valor -= constantes::ocupacionAlfilBlanco[operaciones_bit::espejarCasilla(casilla - 1)];
+            valor -= constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(casilla)];
         }
     }
     return valor;
@@ -2726,13 +3622,13 @@ float Tablero::calcularOcupacionCaballo(int color) {
         U64 bitboardCaballo = bitboards[4];
         while (bitboardCaballo > 0) {
             int casilla = operaciones_bit::LSB(bitboardCaballo);
-            valor += constantes::ocupacionCaballoBlanco[casilla - 1];
+            valor += constantes::ocupacionCaballo[casilla - 1];
         }
     } else {
         U64 bitboardCaballo = bitboards[10];
         while (bitboardCaballo > 0) {
             int casilla = operaciones_bit::LSB(bitboardCaballo);
-            valor -= constantes::ocupacionCaballoBlanco[operaciones_bit::espejarCasilla(casilla - 1)];
+            valor -= constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(casilla)];
         }
     }
     return valor;
@@ -2744,13 +3640,13 @@ float Tablero::calcularOcupacionPeon(int color) {
         U64 bitboardPeon = bitboards[5];
         while (bitboardPeon > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeon);
-            valor += constantes::ocupacionPeonBlanco[casilla - 1];
+            valor += constantes::ocupacionPeon[casilla - 1];
         }
     } else {
         U64 bitboardPeon = bitboards[11];
         while (bitboardPeon > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeon);
-            valor -= constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(casilla - 1)];
+            valor -= constantes::ocupacionPeon[operaciones_bit::espejarCasilla(casilla)];
         }
     }
     return valor;
@@ -2762,13 +3658,13 @@ float Tablero::calcularOcupacionTorre(int color) {
         U64 bitboardTorre = bitboards[2];
         while (bitboardTorre > 0) {
             int casilla = operaciones_bit::LSB(bitboardTorre);
-            valor += constantes::ocupacionTorreBlanco[casilla - 1];
+            valor += constantes::ocupacionTorre[casilla - 1];
         }
     } else {
         U64 bitboardTorre = bitboards[8];
         while (bitboardTorre > 0) {
             int casilla = operaciones_bit::LSB(bitboardTorre);
-            valor -= constantes::ocupacionTorreBlanco[operaciones_bit::espejarCasilla(casilla - 1)];
+            valor -= constantes::ocupacionTorre[operaciones_bit::espejarCasilla(casilla)];
         }
     }
     return valor;
@@ -2780,13 +3676,13 @@ float Tablero::calcularOcupacionReina(int color) {
         U64 bitboardReina = bitboards[1];
         while (bitboardReina > 0) {
             int casilla = operaciones_bit::LSB(bitboardReina);
-            valor += constantes::ocupacionReinaBlanco[casilla - 1];
+            valor += constantes::ocupacionReina[casilla - 1];
         }
     } else {
         U64 bitboardReina = bitboards[7];
         while (bitboardReina > 0) {
             int casilla = operaciones_bit::LSB(bitboardReina);
-            valor -= constantes::ocupacionReinaBlanco[operaciones_bit::espejarCasilla(casilla - 1)];
+            valor -= constantes::ocupacionReina[operaciones_bit::espejarCasilla(casilla)];
         }
     }
     return valor;
@@ -2799,9 +3695,9 @@ float Tablero::calcularOcupacionRey(int color) {
         while (bitboardRey > 0) {
             int casilla = operaciones_bit::LSB(bitboardRey);
             if (endgame) {
-                valor += constantes::ocupacionReyBlancoFinal[casilla - 1];
+                valor += constantes::ocupacionReyFinal[casilla - 1];
             } else {
-                valor += constantes::ocupacionReyBlancoMedioJuego[casilla - 1];
+                valor += constantes::ocupacionReyMedioJuego[casilla - 1];
             }
         }
     } else {
@@ -2809,9 +3705,9 @@ float Tablero::calcularOcupacionRey(int color) {
         while (bitboardRey > 0) {
             int casilla = operaciones_bit::LSB(bitboardRey);
             if (endgame) {
-                valor -= constantes::ocupacionReyBlancoFinal[operaciones_bit::espejarCasilla(casilla - 1)];
+                valor -= constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(casilla)];
             } else {
-                valor -= constantes::ocupacionReyBlancoMedioJuego[operaciones_bit::espejarCasilla(casilla - 1)];
+                valor -= constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(casilla)];
             }
         }
     }
@@ -2830,7 +3726,10 @@ float Tablero::calcularOcupacion(int color) {
 float Tablero::valoracionMaterial(int color) {
     float valor = 0;
     valor = contarMaterialSinPeones(color);
-    if (contarMaterialSinPeones(0) <= 800 && contarMaterialSinPeones(1) >= -800) {
+    if (contarMaterialSinPeones(0) <= 900 && contarMaterialSinPeones(1) >= -900) {
+        endgame = true;
+    }
+    if((bitboards[1] == 0) && (bitboards[7] == 0)){
         endgame = true;
     }
 
@@ -2838,13 +3737,13 @@ float Tablero::valoracionMaterial(int color) {
         U64 bitboardPeonesBlancos = bitboards[5];
         while (bitboardPeonesBlancos > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeonesBlancos);
-            valor += 100;
+            valor += constantes::valorPieza[5];
         }
     } else {
         U64 bitboardPeonesNegros = bitboards[11];
         while (bitboardPeonesNegros > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeonesNegros);
-            valor -= 100;
+            valor += constantes::valorPieza[11];
         }
     }
 
@@ -2916,34 +3815,39 @@ void Tablero::actualizarOcupacion(u_short jugada) {
     int llegada = operaciones_bit::getLlegada(jugada);
     int tipoDePieza = obtenerTipoDePieza(salida);
     int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
-    float ocupacionBlancas = historialOcupacionBlancas.back();
-    float ocupacionNegras = historialOcupacionNegras.back();
+    /*float ocupacionNegras = historialOcupacionNegras.back();
+    float ocupacionBlancas = historialOcupacionBlancas.back();*/
+    float ocupacion_blancas = historial_ocupacion_blancas[contadorOcupacion];
+    float ocupacion_negras = historial_ocupacion_negras[contadorOcupacion];
     if (_turno == 0) {
 
         if (tipoDeJugada == ENPASSANT) {
             //Si la jugada fue ENPASSANT, se elimina el valor de ocupacion del peon rival y se
             //actualiza el valor de ocupacion del peon propio
-            ocupacionBlancas += (constantes::ocupacionPeonBlanco[llegada - 1]
-                                 - constantes::ocupacionPeonBlanco[salida - 1]);
+            ocupacion_blancas += (constantes::ocupacionPeon[llegada - 1]
+                                 - constantes::ocupacionPeon[salida - 1]);
 
             //"Eliminar" en este contexto es simplemente sumar el valor, ya que para las negras los
             //valores de ocupación favorables son negativos
-            ocupacionNegras += constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
-            historialOcupacionBlancas.push_back(ocupacionBlancas);
-            historialOcupacionNegras.push_back(ocupacionNegras);
+            ocupacion_negras += constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)];
+            contadorOcupacion++;
+            /*historialOcupacionBlancas.push_back(ocupacionBlancas);
+            historialOcupacionNegras.push_back(ocupacionNegras);*/
+            historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
+            historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
             return;
         } else if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK) {
             //Si la última jugada fue una promoción sin captura, se elimina el
             // valor de ocupación del peón coronado
-            ocupacionBlancas -= constantes::ocupacionPeonBlanco[llegada - 8];
+            ocupacion_blancas -= constantes::ocupacionPeon[llegada - 8];
         } else if (tipoDeJugada == CASTLING) {
             //Si la última jugada fue un enroque, se actualiza la ocupación de las torres
             if (llegada == 2) {
-                ocupacionBlancas += (constantes::ocupacionTorreBlanco[2]
-                                     - constantes::ocupacionTorreBlanco[0]);
+                ocupacion_blancas += (constantes::ocupacionTorre[2]
+                                     - constantes::ocupacionTorre[0]);
             } else {
-                ocupacionBlancas += (constantes::ocupacionTorreBlanco[4]
-                                     - constantes::ocupacionTorreBlanco[7]);
+                ocupacion_blancas += (constantes::ocupacionTorre[4]
+                                     - constantes::ocupacionTorre[7]);
             }
 
         } else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
@@ -2952,15 +3856,15 @@ void Tablero::actualizarOcupacion(u_short jugada) {
             //Si la última jugada fue una captura, se elimina el valor de ocupación de la pieza capturada
             int piezaCapturada = obtenerTipoDePieza(llegada);
             if (piezaCapturada == DAMA) {
-                ocupacionNegras += constantes::ocupacionReinaBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+                ocupacion_negras += constantes::ocupacionReina[operaciones_bit::espejarCasilla(llegada)];
             } else if (piezaCapturada == TORRE) {
-                ocupacionNegras += constantes::ocupacionTorreBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+                ocupacion_negras += constantes::ocupacionTorre[operaciones_bit::espejarCasilla(llegada)];
             } else if (piezaCapturada == ALFIL) {
-                ocupacionNegras += constantes::ocupacionAlfilBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+                ocupacion_negras += constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(llegada)];
             } else if (piezaCapturada == CABALLO) {
-                ocupacionNegras += constantes::ocupacionCaballoBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+                ocupacion_negras += constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(llegada)];
             } else if (piezaCapturada == PEON) {
-                ocupacionNegras += constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+                ocupacion_negras += constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)];
             }
 
         }
@@ -2981,66 +3885,72 @@ void Tablero::actualizarOcupacion(u_short jugada) {
         //Se agrega ahora el valor de ocupación de la pieza movida en la casilla nueva
         if (tipoDePieza == REY) {
             if (!endgame) {
-                ocupacionBlancas += (constantes::ocupacionReyBlancoMedioJuego[llegada - 1]
-                                     - constantes::ocupacionReyBlancoMedioJuego[salida - 1]);
+                ocupacion_blancas += (constantes::ocupacionReyMedioJuego[llegada - 1]
+                                     - constantes::ocupacionReyMedioJuego[salida - 1]);
             } else {
-                ocupacionBlancas += (constantes::ocupacionReyBlancoFinal[llegada - 1]
-                                     - constantes::ocupacionReyBlancoFinal[salida - 1]);
+                ocupacion_blancas += (constantes::ocupacionReyFinal[llegada - 1]
+                                     - constantes::ocupacionReyFinal[salida - 1]);
             }
         } else if (tipoDePieza == DAMA) {
-            ocupacionBlancas += constantes::ocupacionReinaBlanco[llegada - 1];
+            ocupacion_blancas += constantes::ocupacionReina[llegada - 1];
             if (!esPromocion) {
-                ocupacionBlancas -= constantes::ocupacionReinaBlanco[salida - 1];
+                ocupacion_blancas -= constantes::ocupacionReina[salida - 1];
             }
         } else if (tipoDePieza == TORRE) {
-            ocupacionBlancas += constantes::ocupacionTorreBlanco[llegada - 1];
+            ocupacion_blancas += constantes::ocupacionTorre[llegada - 1];
             if (!esPromocion) {
-                ocupacionBlancas -= constantes::ocupacionTorreBlanco[salida - 1];
+                ocupacion_blancas -= constantes::ocupacionTorre[salida - 1];
             }
         } else if (tipoDePieza == ALFIL) {
-            ocupacionBlancas += constantes::ocupacionAlfilBlanco[llegada - 1];
+            ocupacion_blancas += constantes::ocupacionAlfil[llegada - 1];
             if (!esPromocion) {
-                ocupacionBlancas -= constantes::ocupacionAlfilBlanco[salida - 1];
+                ocupacion_blancas -= constantes::ocupacionAlfil[salida - 1];
             }
         } else if (tipoDePieza == CABALLO) {
-            ocupacionBlancas += constantes::ocupacionCaballoBlanco[llegada - 1];
+            ocupacion_blancas += constantes::ocupacionCaballo[llegada - 1];
             if (!esPromocion) {
-                ocupacionBlancas -= constantes::ocupacionCaballoBlanco[salida - 1];
+                ocupacion_blancas -= constantes::ocupacionCaballo[salida - 1];
             }
         } else if (tipoDePieza == PEON) {
-            ocupacionBlancas += (constantes::ocupacionPeonBlanco[llegada - 1]
-                                 - constantes::ocupacionPeonBlanco[salida - 1]);
+            ocupacion_blancas += (constantes::ocupacionPeon[llegada - 1]
+                                 - constantes::ocupacionPeon[salida - 1]);
         }
 
-        historialOcupacionBlancas.push_back(ocupacionBlancas);
-        historialOcupacionNegras.push_back(ocupacionNegras);
+        /*historialOcupacionBlancas.push_back(ocupacionBlancas);
+        historialOcupacionNegras.push_back(ocupacionNegras);*/
+        contadorOcupacion++;
+        historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
+        historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
     } else {
         if (tipoDeJugada == ENPASSANT) {
             //Si la jugada fue ENPASSANT, se elimina el valor de ocupacion del peon rival y se
             //actualiza el valor de ocupacion del peon propio
-            ocupacionNegras -= (constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(llegada - 1)]
-                                - constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(salida - 1)]);
+            ocupacion_negras -= (constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)]
+                                - constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)]);
 
             //"Eliminar" en este contexto es simplemente restar el valor, ya que para las blancas los
             //valores de ocupación favorables son positivos
-            ocupacionBlancas -= constantes::ocupacionPeonBlanco[llegada - 1];
+            ocupacion_blancas -= constantes::ocupacionPeon[llegada - 1];
 
-            historialOcupacionBlancas.push_back(ocupacionBlancas);
-            historialOcupacionNegras.push_back(ocupacionNegras);
+            /*historialOcupacionBlancas.push_back(ocupacionBlancas);
+            historialOcupacionNegras.push_back(ocupacionNegras);*/
+            contadorOcupacion++;
+            historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
+            historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
 
             return;
         } else if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK) {
             //Si la última jugada fue una promoción sin captura, se elimina el
             // valor de ocupación del peón coronado
-            ocupacionNegras += constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(llegada + 8)];
+            ocupacion_negras += constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada + 8)];
         } else if (tipoDeJugada == CASTLING) {
             //Si la última jugada fue un enroque, se actualiza la ocupación de las torres
             if (llegada == 58) {
-                ocupacionNegras -= (constantes::ocupacionTorreBlanco[2]
-                                    - constantes::ocupacionTorreBlanco[0]);
+                ocupacion_negras -= (constantes::ocupacionTorre[2]
+                                    - constantes::ocupacionTorre[0]);
             } else {
-                ocupacionNegras -= (constantes::ocupacionTorreBlanco[4]
-                                    - constantes::ocupacionTorreBlanco[7]);
+                ocupacion_negras -= (constantes::ocupacionTorre[4]
+                                    - constantes::ocupacionTorre[7]);
             }
 
         } else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
@@ -3049,15 +3959,15 @@ void Tablero::actualizarOcupacion(u_short jugada) {
             //Si la última jugada fue una captura, se elimina el valor de ocupación de la pieza capturada
             int piezaCapturada = obtenerTipoDePieza(llegada);
             if (piezaCapturada == DAMA) {
-                ocupacionBlancas -= constantes::ocupacionReinaBlanco[llegada - 1];
+                ocupacion_blancas -= constantes::ocupacionReina[llegada - 1];
             } else if (piezaCapturada == TORRE) {
-                ocupacionBlancas -= constantes::ocupacionTorreBlanco[llegada - 1];
+                ocupacion_blancas -= constantes::ocupacionTorre[llegada - 1];
             } else if (piezaCapturada == ALFIL) {
-                ocupacionBlancas -= constantes::ocupacionAlfilBlanco[llegada - 1];
+                ocupacion_blancas -= constantes::ocupacionAlfil[llegada - 1];
             } else if (piezaCapturada == CABALLO) {
-                ocupacionBlancas -= constantes::ocupacionCaballoBlanco[llegada - 1];
+                ocupacion_blancas -= constantes::ocupacionCaballo[llegada - 1];
             } else if (piezaCapturada == PEON) {
-                ocupacionBlancas -= constantes::ocupacionPeonBlanco[llegada - 1];
+                ocupacion_blancas -= constantes::ocupacionPeon[llegada - 1];
             }
         }
 
@@ -3079,76 +3989,94 @@ void Tablero::actualizarOcupacion(u_short jugada) {
         //Se agrega ahora el valor de ocupación de la pieza movida en la casilla nueva
         if (tipoDePieza == REY) {
             if (!endgame) {
-                ocupacionNegras -= (
-                        constantes::ocupacionReyBlancoMedioJuego[operaciones_bit::espejarCasilla(llegada - 1)]
-                        - constantes::ocupacionReyBlancoMedioJuego[operaciones_bit::espejarCasilla(salida - 1)]);
+                ocupacion_negras -= (
+                        constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(llegada)]
+                        - constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(salida)]);
             } else {
-                ocupacionNegras -= (constantes::ocupacionReyBlancoFinal[operaciones_bit::espejarCasilla(llegada - 1)]
-                                    - constantes::ocupacionReyBlancoFinal[operaciones_bit::espejarCasilla(salida - 1)]);
+                ocupacion_negras -= (constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(llegada)]
+                                    - constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(salida)]);
             }
         } else if (tipoDePieza == DAMA) {
-            ocupacionNegras -= constantes::ocupacionReinaBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+            ocupacion_negras -= constantes::ocupacionReina[operaciones_bit::espejarCasilla(llegada)];
             if (!esPromocion) {
-                ocupacionNegras += constantes::ocupacionReinaBlanco[operaciones_bit::espejarCasilla(salida - 1)];
+                ocupacion_negras += constantes::ocupacionReina[operaciones_bit::espejarCasilla(salida)];
             }
         } else if (tipoDePieza == TORRE) {
-            ocupacionNegras -= constantes::ocupacionTorreBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+            ocupacion_negras -= constantes::ocupacionTorre[operaciones_bit::espejarCasilla(llegada)];
             if (!esPromocion) {
-                ocupacionNegras += constantes::ocupacionTorreBlanco[operaciones_bit::espejarCasilla(salida - 1)];
+                ocupacion_negras += constantes::ocupacionTorre[operaciones_bit::espejarCasilla(salida)];
             }
         } else if (tipoDePieza == ALFIL) {
-            ocupacionNegras -= constantes::ocupacionAlfilBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+            ocupacion_negras -= constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(llegada)];
             if (!esPromocion) {
-                ocupacionNegras += constantes::ocupacionAlfilBlanco[operaciones_bit::espejarCasilla(salida - 1)];
+                ocupacion_negras += constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(salida)];
             }
         } else if (tipoDePieza == CABALLO) {
-            ocupacionNegras -= constantes::ocupacionCaballoBlanco[operaciones_bit::espejarCasilla(llegada - 1)];
+            ocupacion_negras -= constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(llegada)];
             if (!esPromocion) {
-                ocupacionNegras += constantes::ocupacionCaballoBlanco[operaciones_bit::espejarCasilla(salida - 1)];
+                ocupacion_negras += constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(salida)];
             }
 
         } else if (tipoDePieza == PEON) {
-            ocupacionNegras -= (constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(llegada - 1)]
-                                - constantes::ocupacionPeonBlanco[operaciones_bit::espejarCasilla(salida - 1)]);
+            ocupacion_negras -= (constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)]
+                                - constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)]);
         }
-        historialOcupacionBlancas.push_back(ocupacionBlancas);
-        historialOcupacionNegras.push_back(ocupacionNegras);
+        /*historialOcupacionBlancas.push_back(ocupacionBlancas);
+        historialOcupacionNegras.push_back(ocupacionNegras);*/
+        contadorOcupacion++;
+        historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
+        historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
     }
 
 }
 
 void Tablero::actualizarMaterial(u_short jugada) {
-    float materialBlancas = historialMaterialBlancas.back();
-    float materialNegras = historialMaterialNegras.back();
+    int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
+    if(tipoDeJugada == CASTLING || tipoDeJugada == QUIET || tipoDeJugada == CHECK){
+        return;
+    }
+    int material_blancas = historial_material_blancas[contadorMaterialBlancas].first;
+    int material_negras = historial_material_negras[contadorMaterialNegras].first;
     int salida = operaciones_bit::getSalida(jugada);
     int llegada = operaciones_bit::getLlegada(jugada);
     int tipoDePieza = obtenerTipoDePieza(salida);
-    int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
     if (_turno == 0) {
         if (tipoDeJugada == ENPASSANT) {
             //Si la jugada fue ENPASSANT, se elimina el valor del peon rival
+/*
             materialNegras -= constantes::valorPieza[11];
-            historialMaterialBlancas.push_back(materialBlancas);
-            historialMaterialNegras.push_back(materialNegras);
+*/
+            material_negras -= constantes::valorPieza[11];
+            std::pair<int, int> par = std::make_pair(material_negras, numeroDeJugadas);
+            contadorMaterialNegras++;
+            modif_hist_material_negras = numeroDeJugadas;
+            historial_material_negras[contadorMaterialNegras] = par;
+            /*historialMaterialBlancas.push_back(materialBlancas);
+            historialMaterialNegras.push_back(materialNegras);*/
             return;
-        } else if (tipoDeJugada == CASTLING) {
-            historialMaterialBlancas.push_back(materialBlancas);
-            historialMaterialNegras.push_back(materialNegras);
-            return;
-        } else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
+        }  else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
                    tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER ||
                    tipoDeJugada == CPDC || tipoDeJugada == CPIC) {
 
             int piezaCapturada = obtenerTipoDePieza(llegada);
-            materialNegras += constantes::valorPieza[piezaCapturada];
+            material_negras += constantes::valorPieza[piezaCapturada];
+            std::pair<int, int> par = std::make_pair(material_negras, numeroDeJugadas);
+            contadorMaterialNegras++;
+            modif_hist_material_negras = numeroDeJugadas;
+            historial_material_negras[contadorMaterialNegras] = par;
 
         }
 
         if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK || tipoDeJugada == CPDC
             || tipoDeJugada == CPIC || tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER) {
 
-            materialBlancas += constantes::valorPieza[salida];
-            materialBlancas -= 100;
+            material_blancas += constantes::valorPieza[salida];
+            material_blancas -= constantes::valorPieza[5];
+            std::pair<int, int> par = std::make_pair(material_blancas, numeroDeJugadas);
+            contadorMaterialBlancas++;
+            modif_hist_material_blancas = numeroDeJugadas;
+
+            historial_material_blancas[contadorMaterialBlancas] = par;
 
         }
 
@@ -3156,51 +4084,72 @@ void Tablero::actualizarMaterial(u_short jugada) {
     } else {
         if (tipoDeJugada == ENPASSANT) {
             //Si la jugada fue ENPASSANT, se elimina el valor del peon rival
-            materialBlancas -= constantes::valorPieza[5];
-            historialMaterialBlancas.push_back(materialBlancas);
-            historialMaterialNegras.push_back(materialNegras);
-            return;
-        } else if (tipoDeJugada == CASTLING) {
-            historialMaterialBlancas.push_back(materialBlancas);
-            historialMaterialNegras.push_back(materialNegras);
+            material_blancas -= constantes::valorPieza[5];
+            std::pair<int, int> par = std::make_pair(material_blancas, numeroDeJugadas);
+            contadorMaterialBlancas++;
+            modif_hist_material_blancas = numeroDeJugadas;
+
+            historial_material_blancas[contadorMaterialBlancas] = par;
+
             return;
         } else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
                    tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER ||
                    tipoDeJugada == CPDC || tipoDeJugada == CPIC) {
 
             int piezaCapturada = obtenerTipoDePieza(llegada);
-            materialBlancas -= constantes::valorPieza[piezaCapturada];
+            material_blancas -= constantes::valorPieza[piezaCapturada];
+            std::pair<int, int> par = std::make_pair(material_blancas, numeroDeJugadas);
+            contadorMaterialBlancas++;
+            modif_hist_material_blancas = numeroDeJugadas;
+
+            historial_material_blancas[contadorMaterialBlancas] = par;
 
         }
 
         if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK || tipoDeJugada == CPDC
             || tipoDeJugada == CPIC || tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER) {
 
-            materialNegras -= constantes::valorPieza[salida];
-            materialNegras += 100;
+            material_negras -= constantes::valorPieza[salida];
+            material_negras -= constantes::valorPieza[11];
+            std::pair<int, int> par = std::make_pair(material_negras, numeroDeJugadas);
+            contadorMaterialNegras++;
+            modif_hist_material_negras = numeroDeJugadas;
+            historial_material_negras[contadorMaterialNegras] = par;
+
 
         }
 
     }
-    historialMaterialBlancas.push_back(materialBlancas);
-    historialMaterialNegras.push_back(materialNegras);
+
 }
 
-void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
+void Tablero::actualizarZobristKey(u_short jugada) {
     U64 nuevaZobristKey = zobrist;
+    bool agregueAlgoAlHistorialEP = ((historialEnPassant.size() - (contadorJugadas+1)) == 2);
+
+        if ((historialEnPassant.back() != -1) && agregueAlgoAlHistorialEP) {
+            nuevaZobristKey ^= constantes::enPassant[historialEnPassant.back()];
+            if (historialEnPassant[historialEnPassant.size() - 2] != -1) {
+                nuevaZobristKey ^= constantes::enPassant[historialEnPassant[historialEnPassant.size() - 2]];
+            }
+        }
+
+        if (!agregueAlgoAlHistorialEP && (historialEnPassant.back() != -1)) {
+            nuevaZobristKey ^= constantes::enPassant[historialEnPassant.back()];
+        }
+    
+
+
     int salida = operaciones_bit::getSalida(jugada);
     int llegada = operaciones_bit::getLlegada(jugada);
     int tipo_de_pieza;
-    if (haciendoMovimiento) {
         tipo_de_pieza = obtenerTipoDePieza(salida);
-    } else {
-        tipo_de_pieza = obtenerTipoDePieza(llegada);
-    }
+    
     //Necesitamos diferenciar entre tipo de pieza blanca y negra (cosa que el enum que tenemos
     // no hace) para poder obtener el índice correcto. Para lograr eso simplemente se suma 6
     // al tipo de pieza que se obtenga solo en el caso de que sea negra. Si es blanca queda
     // igual.
-    if ((_turno == 1 && haciendoMovimiento) || (_turno == 0 && !haciendoMovimiento)) {
+    if (_turno == 1) {
         tipo_de_pieza += 6;
     }
     int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
@@ -3210,26 +4159,18 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
     if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
         tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER ||
         tipoDeJugada == CPDC || tipoDeJugada == CPIC) {
-        if (haciendoMovimiento) {
             int piezaCapturada = obtenerTipoDePieza(llegada);
             if (_turno == 0) {
                 piezaCapturada += 6;
             }
             nuevaZobristKey ^= constantes::zobristKeys[piezaCapturada][llegada - 1];
-        } else {
-            for (int i = 0; i < 12; i++) {
-                if ((historialPosiciones[historialPosiciones.size() - 2][i] >> (llegada - 1)) & 1) {
-                    nuevaZobristKey ^= constantes::zobristKeys[i][llegada - 1];
-                    break;
-                }
-            }
-        }
+       
     }
         //Se actualiza el hash para el peón que se captura en caso de que sea enpassant
-    else if (tipoDeJugada == ENPASSANT) {
+    else if (tipoDeJugada == ENPASSANT || tipoDeJugada == ENPASSANTCHECK) {
         int casillaPeonCapturado;
         int tipoDePeon;
-        if ((_turno == 0 && haciendoMovimiento) || (_turno == 1 && !haciendoMovimiento)) {
+        if (_turno == 0 ) {
             casillaPeonCapturado = llegada - 8;
 
             tipoDePeon = PEON + 6;
@@ -3241,7 +4182,7 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
     }
 
         //Caso enroque
-    else if (tipoDeJugada == CASTLING) {
+    else if (tipoDeJugada == CASTLING || tipoDeJugada == CASTLINGCHECK) {
         if (llegada == 2) {
             nuevaZobristKey ^= constantes::zobristKeys[TORRE][0];
             nuevaZobristKey ^= constantes::zobristKeys[TORRE][2];
@@ -3259,31 +4200,25 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
     //Se actualiza el hash del turno
     nuevaZobristKey ^= constantes::mueveElNegro;
 
-    //SE actualizan los hash para el enroque si es necesario
-    if (enroqueLargoBlanco.back() != enroqueLargoBlanco[enroqueLargoBlanco.size() - 2]) {
-        nuevaZobristKey ^= constantes::enroqueLargoBlanco;
-    }
-    if (enroqueCortoBlanco.back() != enroqueCortoBlanco[enroqueCortoBlanco.size() - 2]) {
-        nuevaZobristKey ^= constantes::enroqueCortoBlanco;
-    }
-    if (enroqueLargoNegro.back() != enroqueLargoNegro[enroqueLargoNegro.size() - 2]) {
-        nuevaZobristKey ^= constantes::enroqueLargoNegro;
+    bool haciendoCambioDeEnroques = (numeroDeJugadas == enroques.top().numeroDeMovimiento);
 
-    }
-    if (enroqueCortoNegro.back() != enroqueCortoNegro[enroqueCortoNegro.size() - 2]) {
-        nuevaZobristKey ^= constantes::enroqueCortoNegro;
-    }
-
-    if (tipoDeJugada == QUIET || tipoDeJugada == CHECK) {
-        if (abs(salida - llegada) == 16 && (tipo_de_pieza == PEON || tipo_de_pieza == PEON + 6)) {
-            int columnaDeEnpassant = (llegada % 8) - 1;
-            if (columnaDeEnpassant == 1) {
-                nuevaZobristKey ^= constantes::enPassant[7];
-            } else {
-                nuevaZobristKey ^= constantes::enPassant[columnaDeEnpassant - 1];
-            }
+    if(haciendoCambioDeEnroques) {
+        bitmask enroquesACambiar = enroques.top().derechosActuales ^ enroques.top().derechosAnteriores;
+        if(enroquesACambiar & 1){
+            nuevaZobristKey ^= constantes::enroqueCortoBlanco;
+        }
+        if(enroquesACambiar & 0b10){
+            nuevaZobristKey ^= constantes::enroqueLargoBlanco;
+        }
+        if(enroquesACambiar & 0b100){
+            nuevaZobristKey ^= constantes::enroqueCortoNegro;
+        }
+        if(enroquesACambiar & 0b1000){
+            nuevaZobristKey ^= constantes::enroqueLargoNegro;
         }
     }
+
+
 
     if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK || tipoDeJugada == CPDC
         || tipoDeJugada == CPIC || tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER) {
@@ -3291,7 +4226,7 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
         if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK) {
             tipo_de_pieza = tipoDePieza(salida);
             salida = llegada - 8;
-            if ((_turno == 1 && haciendoMovimiento) || (_turno == 0 && !haciendoMovimiento)) {
+            if (_turno == 1 ) {
                 tipo_de_pieza += 6;
                 salida = llegada + 8;
                 tipoDePeon += 6;
@@ -3300,7 +4235,7 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
         } else if (tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == CPIC) {
             tipo_de_pieza = tipoDePieza(salida);
             salida = llegada - 9;
-            if ((_turno == 1 && haciendoMovimiento) || (_turno == 0 && !haciendoMovimiento)) {
+            if (_turno == 1) {
                 tipo_de_pieza += 6;
                 salida = llegada + 9;
                 tipoDePeon += 6;
@@ -3308,7 +4243,7 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
         } else if (tipoDeJugada == PROMOTIONDER || tipoDeJugada == CPDC) {
             tipo_de_pieza = tipoDePieza(salida);
             salida = llegada - 7;
-            if ((_turno == 1 && haciendoMovimiento) || (_turno == 0 && !haciendoMovimiento)) {
+            if (_turno == 1 ) {
                 tipo_de_pieza += 6;
                 salida = llegada + 7;
                 tipoDePeon += 6;
@@ -3317,6 +4252,9 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
         nuevaZobristKey ^= constantes::zobristKeys[tipoDePeon][salida - 1];
         nuevaZobristKey ^= constantes::zobristKeys[tipo_de_pieza][llegada - 1];
         zobrist = nuevaZobristKey;
+        contadorZobrist++;
+        historialZobrist[contadorZobrist] = zobrist;
+
         return;
     }
 
@@ -3326,29 +4264,18 @@ void Tablero::actualizarZobristKey(u_short jugada, bool haciendoMovimiento) {
 
 
     zobrist = nuevaZobristKey;
+    contadorZobrist++;
+    historialZobrist[contadorZobrist] = zobrist;
 }
 
 bool Tablero::esTripleRepeticion() {
-    if (std::count(historialDePosiciones.begin(), historialDePosiciones.end(), zobrist) == 3) {
+    if (zobrist == 3) {
         return true;
     } else {
         return false;
     }
 }
 
-bool Tablero::seRecapturo() {
-    int tipoDeJugadaUltima = operaciones_bit::getTipoDeJugada(_jugadas.back());
-    int tipoDeJugadaAnteUltima = operaciones_bit::getTipoDeJugada(_jugadas[_jugadas.size() - 2]);
-    int casillaLlegadaUltima = operaciones_bit::getLlegada(_jugadas.back());
-    int casillaLlegadaAnteUltima = operaciones_bit::getLlegada(_jugadas[_jugadas.size() - 2]);
-    if ((tipoDeJugadaUltima == CAPTURE || tipoDeJugadaUltima == CAPTURECHECK) &&
-        (tipoDeJugadaAnteUltima == CAPTURE || tipoDeJugadaAnteUltima == CAPTURECHECK) &&
-        casillaLlegadaUltima == casillaLlegadaAnteUltima) {
-        return true;
-    } else {
-        return false;
-    }
-}
 
 void Tablero::actualizarCantMovesPiezasMenores(u_short jugada, bool haciendoMovimiento) {
     int salida = operaciones_bit::getSalida(jugada);
@@ -3482,29 +4409,27 @@ void Tablero::imprimirFen() {
     fen += " ";
 
     // Add castling rights
-    if (enroqueCortoBlanco.back()) fen += "K";
-    if (enroqueLargoBlanco.back()) fen += "Q";
-    if (enroqueCortoNegro.back()) fen += "k";
-    if (enroqueLargoNegro.back()) fen += "q";
+    if (enroqueCortoBlancas()) fen += "K";
+    if (enroqueLargoBlancas()) fen += "Q";
+    if (enroqueCortoNegras()) fen += "k";
+    if (enroqueLargoNegras()) fen += "q";
     if (fen.back() == ' ') fen += "-";  // No castling rights
 
 
     fen += " ";
 
 
-    if (!_jugadas.empty()) {
-        int salidaUltimaJugada = operaciones_bit::getSalida(_jugadas.back());
-        int llegadaUltimaJugada = operaciones_bit::getLlegada(_jugadas.back());
-        if (!_jugadas.empty() && abs(salidaUltimaJugada - llegadaUltimaJugada) == 16 &&
+    if (contadorJugadas < 0) {
+        int salidaUltimaJugada = operaciones_bit::getSalida(jugadas[contadorJugadas]);
+        int llegadaUltimaJugada = operaciones_bit::getLlegada(jugadas[contadorJugadas]);
+        if ((contadorJugadas>=0) && abs(salidaUltimaJugada - llegadaUltimaJugada) == 16 &&
             (obtenerTipoDePieza(llegadaUltimaJugada) == PEON)) {
             // Add en-passant target square
 
             if (salidaUltimaJugada > llegadaUltimaJugada) {
-                fen += (char) ('a' + (llegadaUltimaJugada % 8) - 1);
-                fen += std::to_string((llegadaUltimaJugada / 8) + 1);
+                fen += constantes::NumeroACasilla[llegadaUltimaJugada + 8];
             } else {
-                fen += (char) ('a' + (llegadaUltimaJugada % 8) + 1);
-                fen += std::to_string((llegadaUltimaJugada / 8) + 1);
+                fen += constantes::NumeroACasilla[llegadaUltimaJugada - 8];
             }
         } else {
             fen += "-";
@@ -3580,28 +4505,19 @@ int Tablero::cantPiezas(int color) {
 void Tablero::configurarFen(std::string fen) {
     //Inicializar bitboards en 0
     bitboards.clear();
-    enroqueLargoBlanco.clear();
-    enroqueCortoBlanco.clear();
-    enroqueLargoNegro.clear();
-    enroqueCortoNegro.clear();
-    _jugadas.clear();
-    historialDePosiciones.clear();
-    historialMaterialBlancas.clear();
-    historialMaterialNegras.clear();
-    historialOcupacionBlancas.clear();
-    historialOcupacionNegras.clear();
+    contadorZobrist = -1;
+    contadorJugadas = -1;
+    enroques = std::stack<derechosDeEnroque>();
+
+    contadorMaterialBlancas = -1;
+    contadorMaterialNegras = -1;
+    contadorOcupacion = -1;
+
 
     for (int k = 0; k < 12; k++) {
         bitboards.push_back(0ULL);
     }
-
-    //Se inician los enroques en false, luego con la info del fen se sabe cuáles setear en true
-    enroqueCortoBlanco.push_back(false);
-    enroqueLargoBlanco.push_back(false);
-    enroqueLargoNegro.push_back(false);
-    enroqueCortoNegro.push_back(false);
-
-
+    bitmask enroquesIniciales = 0;
 
     //Se van insertando las piezas y asignando valores de variables según el fen
     int casillaActual = 64; //Se arranca desde la casilla a8 porque así funciona la notacion FEN
@@ -3687,13 +4603,13 @@ void Tablero::configurarFen(std::string fen) {
 
             //K, Q, k y q indican los derechos a enroncar de blancas y negras.
         } else if (fen[i] == 'K') {
-            enroqueCortoBlanco.back() = true;
+            enroquesIniciales = enroquesIniciales | 0b1;
         } else if (fen[i] == 'Q') {
-            enroqueLargoBlanco.back() = true;
+            enroquesIniciales = enroquesIniciales | 0b10;
         } else if (fen[i] == 'k') {
-            enroqueCortoNegro.back() = true;
+            enroquesIniciales = enroquesIniciales | 0b100;
         } else if (fen[i] == 'q') {
-            enroqueLargoNegro.back() = true;
+            enroquesIniciales = enroquesIniciales | 0b1000;
 
             //Si llegamos a esta parte se está hablando de un posible casilla de enpassant o de la cantidad
             // de medio-movimientos
@@ -3719,20 +4635,305 @@ void Tablero::configurarFen(std::string fen) {
                 //Agregamos el avance de peón al historial para que la detección de enpassant
                 //funcione correctamente.
                 u_short jugada = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
-                _jugadas.push_back(jugada);
+                /*_jugadas.push_back(jugada);*/
+                contadorJugadas++;
+                jugadas[contadorJugadas] = jugada;
 
             }
         }
     }
+    enroques.push({enroquesIniciales, 0, -5});
+    //Se actualiza el hash de Zobrist
+    zobrist = zobristKey();
+    contadorZobrist++;
+    historialZobrist[contadorZobrist] = zobrist;
 
     //Se calcula el valor del material y se agrega al historial
-    historialMaterialBlancas.push_back(valoracionMaterial(0));
-    historialMaterialNegras.push_back(valoracionMaterial(1));
-/*        controlCentroBlancas = controlDeCentro(0);
-        controlCentroNegras = controlDeCentro(1);*/
+    contadorMaterialBlancas = 0;
+    contadorMaterialNegras = 0;
+    historial_material_blancas[contadorMaterialBlancas] = std::make_pair(valoracionMaterial(0), 0);
+    historial_material_negras[contadorMaterialNegras] = std::make_pair(valoracionMaterial(1), 0);
+    contadorOcupacion = 0;
+    historial_ocupacion_blancas[contadorOcupacion] = calcularOcupacion(0);
+    historial_ocupacion_negras[contadorOcupacion] = calcularOcupacion(1);
 
 
-    historialOcupacionBlancas.push_back(calcularOcupacion(0));
-    historialOcupacionNegras.push_back(calcularOcupacion(1));
+}
 
+std::string Tablero::formatearJugada(u_short jugada) {
+    string jugadaString;
+    int salida, llegada;
+    //Chequear el tipo de jugada para imprimir la jugada en el formato correcto
+    int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
+    if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK) {
+        llegada = operaciones_bit::getLlegada(jugada);
+        int piezaAPromover = operaciones_bit::getSalida(jugada);
+
+        if (llegada > 32) {
+            salida = llegada - 8;
+        } else {
+            salida = llegada + 8;
+        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
+
+    } else if (tipoDeJugada == PROMOTIONDER || tipoDeJugada == CPDC) {
+        llegada = operaciones_bit::getLlegada(jugada);
+        int piezaAPromover = operaciones_bit::getSalida(jugada);
+        if (llegada > 32) {
+            salida = llegada - 7;
+        } else {
+            salida = llegada + 7;
+        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
+
+    } else if (tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == CPIC) {
+        llegada = operaciones_bit::getLlegada(jugada);
+        int piezaAPromover = operaciones_bit::getSalida(jugada);
+        if (llegada > 32) {
+            salida = llegada - 9;
+        } else {
+            salida = llegada + 9;
+        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
+
+    } else {
+        salida = operaciones_bit::getSalida(jugada);
+        llegada = operaciones_bit::getLlegada(jugada);
+
+        jugadaString += constantes::NumeroACasilla[salida];
+        jugadaString += constantes::NumeroACasilla[llegada];
+    }
+    return jugadaString;
+}
+
+std::string Tablero::generarJugadaString(int piezaAPromover, int salida, int llegada) {
+    std::string jugadaString = "";
+    jugadaString += constantes::NumeroACasilla[salida];
+    jugadaString += constantes::NumeroACasilla[llegada];
+
+    switch (piezaAPromover) {
+        case DAMA:
+            jugadaString += "q";
+            break;
+        case TORRE:
+            jugadaString += "r";
+            break;
+        case ALFIL:
+            jugadaString += "b";
+            break;
+        case CABALLO:
+            jugadaString += "n";
+            break;
+    }
+
+    return jugadaString;
+}
+
+bool Tablero::esCaptura(u_short jugada) {
+
+    int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
+    return tipoDeJugada == CAPTURE || tipoDeJugada == ENPASSANT
+           || tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER;
+}
+
+void Tablero::movimientoNulo() {
+    cambiarTurno();
+    numeroDeJugadas++;
+    zobrist ^= constantes::mueveElNegro;
+    contadorJugadas++;
+    jugadas[contadorJugadas] = 0;
+
+    if (historialEnPassant.back() != -1) {
+        zobrist ^= constantes::enPassant[historialEnPassant.back()];
+    }
+
+    historialEnPassant.push_back(-1);
+    contadorZobrist++;
+    historialZobrist[contadorZobrist] = zobrist;
+
+}
+
+void Tablero::deshacerMovimientoNulo() {
+    cambiarTurno();
+    numeroDeJugadas--;
+    contadorZobrist--;
+    zobrist = historialZobrist[contadorZobrist];
+    contadorJugadas--;
+    historialEnPassant.pop_back();
+
+
+}
+
+bool Tablero::esUnJaque(u_short movimiento) {
+    int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
+    if (tipoDeJugada == CAPTURECHECK || tipoDeJugada == ENPASSANTCHECK || tipoDeJugada == CPDC
+        || tipoDeJugada == CPIC) {
+        return true;
+    }
+    return false;
+}
+
+int Tablero::contador_movilidad(int turno) {
+    int cantMoves = 0;
+        U64 torres = bitboards[2];
+        while (torres > 0) {
+            int casilla = operaciones_bit::LSB(torres);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves += __builtin_popcountll(bitboard_movimientos_torre_blanca(bitboard) & ~piezas_blancas());
+        }
+        U64 alfiles = bitboards[3];
+        while (alfiles > 0) {
+            int casilla = operaciones_bit::LSB(alfiles);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves += __builtin_popcountll(bitboard_movimientos_alfil_blanco(bitboard) & ~piezas_blancas());
+        }
+        U64 caballos = bitboards[4];
+        while (caballos > 0) {
+            int casilla = operaciones_bit::LSB(caballos);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves += __builtin_popcountll(bitboard_movimientos_caballo_blanco(bitboard) & ~piezas_blancas());
+        }
+        U64 damas = bitboards[1];
+        while (damas > 0) {
+            int casilla = operaciones_bit::LSB(damas);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves += __builtin_popcountll(bitboard_movimientos_dama_blanca(bitboard) & ~piezas_blancas());
+        }
+        U64 rey = bitboards[0];
+        while (rey > 0) {
+            int casilla = operaciones_bit::LSB(rey);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves += __builtin_popcountll(bitboard_movimientos_rey_blanco(bitboard) & ~piezas_blancas());
+        }
+        U64 peones = bitboards[5];
+        cantMoves += __builtin_popcountll(peon->todos_los_movimientos(peones, piezas_blancas(),
+                                                                      piezas_negras(), 0));
+
+        U64 torresn = bitboards[8];
+        while (torresn > 0) {
+            int casilla = operaciones_bit::LSB(torresn);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves -= __builtin_popcountll(bitboard_movimientos_torre_negra(bitboard) & ~piezas_negras());
+        }
+        U64 alfilesn = bitboards[9];
+        while (alfilesn > 0) {
+            int casilla = operaciones_bit::LSB(alfilesn);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves -= __builtin_popcountll(bitboard_movimientos_alfil_negro(bitboard) & ~piezas_negras());
+        }
+
+        U64 caballosn = bitboards[10];
+        while (caballosn > 0) {
+            int casilla = operaciones_bit::LSB(caballosn);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves -= __builtin_popcountll(bitboard_movimientos_caballo_negro(bitboard) & ~piezas_negras());
+        }
+
+        U64 damasn = bitboards[7];
+        while (damasn > 0) {
+            int casilla = operaciones_bit::LSB(damasn);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves -= __builtin_popcountll(bitboard_movimientos_dama_negra(bitboard) & ~piezas_negras());
+        }
+
+        U64 reyn = bitboards[6];
+        while (reyn > 0) {
+            int casilla = operaciones_bit::LSB(reyn);
+            U64 bitboard = operaciones_bit::setBit(0, casilla, 1);
+            cantMoves -= __builtin_popcountll(bitboard_movimientos_rey_negro(bitboard) & ~piezas_negras());
+        }
+        U64 peonesn = bitboards[11];
+        cantMoves -= __builtin_popcountll(peon->todos_los_movimientos(peonesn, piezas_negras(),
+                                                                      piezas_blancas(), 1));
+
+
+    return cantMoves;
+}
+
+void Tablero::setearEnroque(int tipoDeEnroque, bool hayDerecho) {
+    // 0 es enroque corto de blancas
+    // 1 es enroque largo de blancas
+    // 2 es enroque corto de negras
+    // 3 es enroque largo de negras
+    derechosEnroqueAux = (derechosEnroqueAux &
+                   ~(1 << tipoDeEnroque)) | (hayDerecho << tipoDeEnroque);
+
+
+}
+
+void Tablero:: guardarEnroque() {
+    derechosDeEnroque nuevos;
+    nuevos.derechosAnteriores = enroques.top().derechosActuales;
+    nuevos.derechosActuales = derechosEnroqueAux;
+    nuevos.numeroDeMovimiento = numeroDeJugadas;
+    enroques.push(nuevos);
+}
+
+void Tablero::deshacerEnroque() {
+    if(numeroDeJugadas == (enroques.top().numeroDeMovimiento) ){
+        enroques.pop();
+    }
+}
+
+bool Tablero::enroqueCortoBlancas() {return enroques.top().derechosActuales & 1;}
+bool Tablero::enroqueLargoBlancas() {return enroques.top().derechosActuales & 0b10;}
+bool Tablero::enroqueCortoNegras() {return enroques.top().derechosActuales & 0b100;}
+bool Tablero::enroqueLargoNegras() {return enroques.top().derechosActuales & 0b1000;}
+
+int Tablero::detectarPeonesPasados(int turno){
+    int peonesPasados = 0;
+    U64 peones = bitboards[5 + turno*6];
+    if(turno == 0) {
+        while (peones > 0) {
+            int casilla = operaciones_bit::LSB(peones);
+            if(0xff000000000000 & (1ULL <<(casilla - 1))){
+                peonesPasados += constantes::premioPeonPasado[5];
+                continue;
+            }
+            if((0xffffffffff00 & (1ULL << (casilla - 1))) &&
+            (masksPeonesPasados[casilla - 9] & bitboards[11])){
+                peonesPasados += constantes::premioPeonPasado[((casilla - 1) / 8) - 1];
+            }
+        }
+    }
+    else{
+        while (peones > 0) {
+            int casilla = operaciones_bit::LSB(peones);
+            if(0xff00 & (1ULL << (casilla - 1))){
+                peonesPasados += constantes::premioPeonPasado[5];
+                continue;
+            }
+            if((0xffffffffff0000 & (1ULL << (casilla - 1))) &&
+            (masksPeonesPasados[96 - casilla] & bitboards[5])){
+                peonesPasados += constantes::premioPeonPasado[(7 - (casilla-1) / 8) - 1];
+            }
+        }
+    }
+
+    return peonesPasados;
+}
+
+void Tablero::calcularMasksPeonesPasados() {
+    for(int i = 9; i < 49; i++) {
+        int filaDelPeon = (i / 8);
+        int columnaDelPeon = ((i - 1) % 8);
+        U64 columnaPeonBitboard = constantes::HFile << columnaDelPeon;
+        U64 columnaPeonIzqBitboard = columnaDelPeon == 7 ? 0 : columnaPeonBitboard << 1;
+        U64 columnaPeonDerBitboard = columnaDelPeon == 0 ? 0 : columnaPeonBitboard >> 1;
+        U64 maskDelPeon;
+
+        maskDelPeon = (columnaDelPeon | columnaPeonIzqBitboard | columnaPeonDerBitboard) << filaDelPeon;
+        masksPeonesPasados[i - 9] = maskDelPeon;
+    }
+    for(int i = 56; i > 16; i--) {
+        int filaDelPeon = (i / 8);
+        int columnaDelPeon = ((i - 1) % 8);
+        U64 columnaPeonBitboard = constantes::HFile << columnaDelPeon;
+        U64 columnaPeonIzqBitboard = columnaDelPeon == 0 ? 0 : columnaPeonBitboard << 1;
+        U64 columnaPeonDerBitboard = columnaDelPeon == 7 ? 0 : columnaPeonBitboard >> 1;
+        U64 maskDelPeon;
+
+        maskDelPeon = (columnaDelPeon | columnaPeonIzqBitboard | columnaPeonDerBitboard) >> filaDelPeon;
+        masksPeonesPasados[96 - i] = maskDelPeon;
+    }
 }

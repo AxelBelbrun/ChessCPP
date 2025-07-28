@@ -7,14 +7,20 @@
 #include <iostream>
 #include "Peon.h"
 #include <algorithm>
+
 Motor::Motor() {
-    TT = new TablaTrans();
+    TT = new Tabla_transposicion();
+    ply = -1;
     tablaInicializada = false;
+    //Inicializamos todos los killer moves como -1
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 128; j++) {
+            killerMove[i][j] = -1;
+        }
+    }
 };
 
-bool Motor:: endgame = false;
-
-
+bool Motor::endgame = false;
 
 
 float Motor::valoracion(Tablero *tablero) {
@@ -24,226 +30,278 @@ float Motor::valoracion(Tablero *tablero) {
     float diferenciaMaterial = valoracionMaterial(tablero);
 
     // Paso 2: Comprobar si la diferencia de material es mayor que un cierto umbral
-    /*if (abs(diferenciaMaterial)*2 > 3000) {
+    if (abs(diferenciaMaterial)*2 > 3000) {
         // Si la diferencia de material es demasiado grande, devolver inmediatamente una evaluación
-        evaluacion = 2*diferenciaMaterial;
-    } else {*/
+        evaluacion = diferenciaMaterial;
+    } else {
         // Paso 3: Si la diferencia de material no es mayor que el umbral, continuar con el resto de los criterios de evaluación
         evaluacion += diferenciaMaterial;
-
         evaluacion += calcularOcupacion(tablero, tablero->_turno);
 
 
         evaluacion += calcularDesarrollo(tablero, tablero->_turno);
+    }
 
-/*}*/
-/*
-        //Penalizar el perder el derecho a enrocar para las blancas
-        float perdidaEnroqueBlancas = 0;
-        if(tablero->perdidaEnroqueCortoBlancas) {
-            perdidaEnroqueBlancas -= 100;
-        }
-        if(tablero->perdidaEnroqueLargoBlancas){
-            perdidaEnroqueBlancas -= 100;
-        }
+/*    //Penalizar el perder el derecho a enrocar para las blancas
+    float perdidaEnroqueBlancas = 0;
+    if (tablero->perdidaEnroqueCortoBlancas) {
+        perdidaEnroqueBlancas -= 70;
+    }
+    if (tablero->perdidaEnroqueLargoBlancas) {
+        perdidaEnroqueBlancas -= 70;
+    }
 
-        evaluacion += perdidaEnroqueBlancas;
-        //Penalizar el perder el derecho a enrocar para las negras
 
-        float perdidaEnroqueNegras = 0;
-        if(tablero-> perdidaEnroqueLargoNegras){
 
-            perdidaEnroqueNegras += 100;
-        }
-        if(tablero->perdidaEnroqueCortoNegras){
-            perdidaEnroqueNegras += 100;
-        }
-        evaluacion += perdidaEnroqueNegras;*/
+    tablero->_turno == 0 ? evaluacion += perdidaEnroqueBlancas : evaluacion -= perdidaEnroqueBlancas;
+    //Penalizar el perder el derecho a enrocar para las negras
+
+    float perdidaEnroqueNegras = 0;
+    if (tablero->perdidaEnroqueLargoNegras) {
+
+        perdidaEnroqueNegras += 70;
+    }
+    if (tablero->perdidaEnroqueCortoNegras) {
+        perdidaEnroqueNegras += 70;
+    }
+
+    tablero->_turno == 1 ? evaluacion -= perdidaEnroqueNegras : evaluacion += perdidaEnroqueNegras;*/
+
 
 //Penalizar el movimiento temprano de la dama blanca
-    float movimientoTempDamaBlanca = 0;
+/*    float movimientoTempDamaBlanca = 0;
 
-    if (tablero->movimientoTempranoDamaBlanca) {
-        movimientoTempDamaBlanca -= constantes::castigoPorSacarDama;
+    if (tablero-> contadorJugadas <= 8 && tablero->movimientoTempranoDamaBlanca) {
+        tablero->_turno == 0 ? movimientoTempDamaBlanca -= constantes::castigoPorSacarDama : movimientoTempDamaBlanca += constantes::castigoPorSacarDama;
     }
 
     evaluacion += movimientoTempDamaBlanca;
     float movimientoTempDamaNegra = 0;
-    if (tablero->movimientoTempranoDamaNegra) {
-        movimientoTempDamaNegra += constantes::castigoPorSacarDama;
+    if(tablero->contadorJugadas <=8 && tablero->movimientoTempranoDamaNegra){
+        tablero->_turno == 1 ? movimientoTempDamaNegra -= constantes::castigoPorSacarDama : movimientoTempDamaNegra += constantes::castigoPorSacarDama;
     }
-    evaluacion += movimientoTempDamaNegra;
-        if(tablero->_jugadas.size() <= 20) {
-
-
-            //Penalizar multiples movimientos de la misma pieza menor blanca en la apertura
-            if(tablero->movimientosAlfilBlancoF.second > 1){
-                evaluacion -= constantes::castigoMultiplesMovimientos*(tablero->movimientosAlfilBlancoF.second - 1);
-            }
-            if(tablero->movimientosAlfilBlancoC.second > 1){
-                evaluacion -= constantes::castigoMultiplesMovimientos*(tablero->movimientosAlfilBlancoC.second - 1);
-            }
-            if(tablero->movimientosCaballoBlancoB.second > 1){
-                evaluacion -= constantes::castigoMultiplesMovimientos*(tablero->movimientosCaballoBlancoB.second - 1);
-            }
-            if(tablero->movimientosCaballoBlancoG.second > 1){
-                evaluacion -= constantes::castigoMultiplesMovimientos*(tablero->movimientosCaballoBlancoG.second - 1);
-            }
-            //Penalizar el movimiento temprano de la dama negra
-
-
-
-            //Penalizar multiples movimientos de la misma pieza menor negra en la apertura
-            if(tablero->movimientosAlfilNegroF.second > 1){
-                evaluacion += constantes::castigoMultiplesMovimientos*(tablero->movimientosAlfilNegroF.second - 1);
-            }
-            if(tablero->movimientosAlfilNegroC.second > 1){
-                evaluacion += constantes::castigoMultiplesMovimientos*(tablero->movimientosAlfilNegroC.second - 1);
-            }
-            if(tablero->movimientosCaballoNegroB.second > 1){
-                evaluacion += constantes::castigoMultiplesMovimientos*(tablero->movimientosCaballoNegroB.second - 1);
-            }
-            if(tablero->movimientosCaballoNegroG.second > 1){
-                evaluacion += constantes::castigoMultiplesMovimientos*(tablero->movimientosCaballoNegroG.second - 1);
-            }
+    evaluacion += movimientoTempDamaNegra;*/
+    if (tablero->contadorJugadas <= 12) {
+        float total = 0;
+        //Penalizar multiples movimientos de la misma pieza menor blanca en la apertura
+        if (tablero->movimientosAlfilBlancoF.second > 1) {
+            total -= constantes::castigoMultiplesMovimientos * (tablero->movimientosAlfilBlancoF.second - 1);
         }
-        //Premiar si las blancas enrocan
-
-        float enrocaronLasBlancas = 0;
-        if(tablero->enrocoBlancas){
-            enrocaronLasBlancas += constantes::premioPorEnrocar;
+        if (tablero->movimientosAlfilBlancoC.second > 1) {
+            total -= constantes::castigoMultiplesMovimientos * (tablero->movimientosAlfilBlancoC.second - 1);
         }
-        evaluacion += enrocaronLasBlancas;
+        if (tablero->movimientosCaballoBlancoB.second > 1) {
+            total -= constantes::castigoMultiplesMovimientos * (tablero->movimientosCaballoBlancoB.second - 1);
+        }
+        if (tablero->movimientosCaballoBlancoG.second > 1) {
+            total -= constantes::castigoMultiplesMovimientos * (tablero->movimientosCaballoBlancoG.second - 1);
+        }
+        //Penalizar el movimiento temprano de la dama negra
 
-        //Premiar si las negras enrocan
 
-        float enrocaronLasNegras = 0;
-        if(tablero->enrocoNegras){
-            enrocaronLasNegras -= constantes::premioPorEnrocar;
+
+        //Penalizar multiples movimientos de la misma pieza menor negra en la apertura
+        if (tablero->movimientosAlfilNegroF.second > 1) {
+            total += constantes::castigoMultiplesMovimientos * (tablero->movimientosAlfilNegroF.second - 1);
+        }
+        if (tablero->movimientosAlfilNegroC.second > 1) {
+            total += constantes::castigoMultiplesMovimientos * (tablero->movimientosAlfilNegroC.second - 1);
+        }
+        if (tablero->movimientosCaballoNegroB.second > 1) {
+            total += constantes::castigoMultiplesMovimientos * (tablero->movimientosCaballoNegroB.second - 1);
+        }
+        if (tablero->movimientosCaballoNegroG.second > 1) {
+            total += constantes::castigoMultiplesMovimientos * (tablero->movimientosCaballoNegroG.second - 1);
         }
 
-        evaluacion += enrocaronLasNegras;
+        tablero->_turno == 0 ? evaluacion += total : evaluacion -= total;
+    }
+    //Premiar si las blancas enrocan
+
+    float enrocaronLasBlancas = 0;
+    if (tablero->enrocoBlancas) {
+        enrocaronLasBlancas += constantes::premioPorEnrocar;
+    }
+
+    tablero->_turno == 0 ? evaluacion += enrocaronLasBlancas : evaluacion -= enrocaronLasBlancas;
+    //Premiar si las negras enrocan
+
+    float enrocaronLasNegras = 0;
+    if (tablero->enrocoNegras) {
+        enrocaronLasNegras -= constantes::premioPorEnrocar;
+    }
+
+    tablero->_turno == 0 ? evaluacion += enrocaronLasNegras : evaluacion -= enrocaronLasNegras;
 
 
 
 
 
-        //Penalizar si los peones de d y e blancos están bloqueados
-        if(tablero->obtenerTipoDePieza(12) == PEON){
-            if(tablero->obtenerTipoDePieza(20) != VACIO){
-                evaluacion -= constantes::castigoPeonBloqueado;
-            }
+
+    //Penalizar si los peones de d y e blancos están bloqueados
+    if (tablero->obtenerTipoDePieza(12) == PEON) {
+        if (tablero->obtenerTipoDePieza(20) != VACIO) {
+            tablero-> _turno == 0 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
         }
+    }
 
-        if(tablero->obtenerTipoDePieza(13) == PEON){
-            if(tablero->obtenerTipoDePieza(21) != VACIO){
-                evaluacion -= constantes::castigoPeonBloqueado;
-            }
+    if (tablero->obtenerTipoDePieza(13) == PEON) {
+        if (tablero->obtenerTipoDePieza(21) != VACIO) {
+            tablero-> _turno == 0 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
         }
+    }
 
-        //Penalizar si los peones de d y e negros están bloqueados
-        if(tablero->obtenerTipoDePieza(53) == PEON){
-            if(tablero->obtenerTipoDePieza(45) != VACIO){
-                evaluacion += constantes::castigoPeonBloqueado;
-            }
+    //Penalizar si los peones de d y e negros están bloqueados
+    if (tablero->obtenerTipoDePieza(53) == PEON) {
+        if (tablero->obtenerTipoDePieza(45) != VACIO) {
+            tablero-> _turno == 1 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
         }
-        if(tablero->obtenerTipoDePieza(52) == PEON){
-            if(tablero->obtenerTipoDePieza(44) != VACIO){
-                evaluacion += constantes::castigoPeonBloqueado;
-            }
+    }
+    if (tablero->obtenerTipoDePieza(52) == PEON) {
+        if (tablero->obtenerTipoDePieza(44) != VACIO) {
+            tablero-> _turno == 1 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
         }
+    }
 
-/*        //Evaluacion de movilidad
-    vector<u_short> movesPseudo = tablero->generar_movimientos(tablero-> _turno);
-        int contador = movesPseudo.size();
-    evaluacion += contador*0.5;*/
+/*    //Evaluacion de movilidad
+    tablero->generar_movimientos(tablero-> _turno, ply);
+    int contador = tablero->cantMovesGenerados[ply];
+    evaluacion += contador;
+    tablero->cantMovesGenerados[ply] = -1;*/
 
+    //Evaluamos la seguridad del rey
 
+/*    if(!tablero->endgame) {
+        float reysec = 0.7*seguridadDelRey(tablero);
+        evaluacion += reysec;
+    }*/
 
+    double cant = tablero->contador_movilidad(tablero->_turno);
 
-    if(tablero->_turno == 1){
+    tablero->_turno == 0 ? evaluacion += constantes::pesoMovilidad*cant : evaluacion -= constantes::pesoMovilidad*cant;
+    //Control del centro
+
+/*
+    evaluacion += controlDeCentro(tablero, tablero->_turno);
+*/
+
+/*    if(tablero->endgame) {
+        premioPorPeonesPasados = tablero->detectarPeonesPasados(0) - tablero->detectarPeonesPasados(1);
+        evaluacion += (tablero->_turno == 0) ? premioPorPeonesPasados : -premioPorPeonesPasados;
+    }*/
+/*    if (tablero->_turno == 1) {
         evaluacion = -evaluacion;
-    }
+    }*/
 
     return evaluacion;
 }
 
-float Motor::valoracionMaterial(Tablero* tablero) {
-    if((tablero->historialMaterialBlancas.back() <= 900 && tablero->historialMaterialNegras.back() >= -900)
-    || tablero->cantPiezas(tablero->_turno) <= 2){
-        endgame = true;
+float Motor::valoracionMaterial(Tablero *tablero) {
+    int valoracionBlancas = tablero->historial_material_blancas[tablero->contadorMaterialBlancas].first;
+    int valoracionNegras = tablero->historial_material_negras[tablero->contadorMaterialNegras].first;
+    if (!tablero->endgame && ( valoracionBlancas <= 900 &&
+    valoracionNegras >= -900)) {
+        tablero->endgame = true;
     }
-    float valor = tablero->historialMaterialBlancas.back() + tablero->historialMaterialNegras.back();
+    if(!tablero->endgame && (tablero->bitboards[1] == 0) && (tablero->bitboards[7] == 0)){
+        tablero->endgame = true;
+    }
+    float valor = valoracionBlancas + valoracionNegras;
 
-    return valor;
+    return (tablero->_turno == 0) ? valor : -valor;
 }
 
-float Motor:: valoracionMovilidad(Tablero* tablero) {
+float Motor::valoracionMovilidad(Tablero *tablero) {
     float valor = 0;
-    vector<u_short> movimientos = tablero->generar_movimientos(tablero->_turno);
-    if(tablero->_turno == 0){
+    tablero->generar_movimientos(tablero->_turno, ply);
+    if (tablero->_turno == 0) {
 
-        valor += (float) (movimientos.size() );
+        valor += (float) (tablero->cantMovesGenerados[ply]);
+
+    } else {
+
+        valor -= (float) (tablero->cantMovesGenerados[ply]);
 
     }
-    else{
-
-            valor -= (float) (movimientos.size() );
-
-    }
+    tablero->cantMovesGenerados[ply] = -1;
 
 
     return valor;
 }
 
 
-
-U64 Motor::perft(int depth, Tablero* tablero) {
+U64 Motor::perft(int depth, Tablero *tablero) {
+    ply++;
     if (depth == 0) {
         return 1;
     }
 
     U64 nodes = 0;
-    vector<u_short> moves = tablero->generar_movimientos(tablero->_turno);
-    U64 zobrist1 = tablero->zobristKey();
-    for (auto &move : moves) {
-        if (tablero->moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move), operaciones_bit::getTipoDeJugada(move))) {
+    tablero->generar_movimientos(tablero->_turno, ply);
+
+/*
+    U64 clave1 = tablero-> zobrist;
+*/
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        u_short move = tablero->movimientos_generados[ply][i];
+        if (tablero->moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move),
+                                operaciones_bit::getTipoDeJugada(move))) {
+
             nodes += perft(depth - 1, tablero);
+            ply--;
+           /* if((tablero-> _jugadas.size()) != (tablero->historialEnPassant.size())){
+                cout << "cantidad distinta de jugadas y enpassant" << endl;
+                for(auto x: tablero->_jugadas){
+                    std::cout << x << std::endl;
+                }
+                exit(0);
+            }*/
             tablero->deshacerMovimiento();
-            U64 zobrist2 = tablero->zobristKey();
-            if (zobrist1 != zobrist2) {
-                tablero->imprimirFen();
-                cout << constantes::NumeroACasilla[operaciones_bit::getSalida(move)]
-                     << constantes::NumeroACasilla[operaciones_bit::getLlegada(move)] << endl;
-            }
+            /*U64 clave2 = tablero-> zobrist;
+            if(clave1 != clave2){
+                cout << "Zobrist no se actualizó correctamente" << endl;
+                for (auto x: tablero->jugadas){
+                    std::cout << x << std::endl;
+                }
+                cout << move << endl;
+                exit(0);
+            }*/
         }
     }
+
+    tablero->cantMovesGenerados[ply] = -1;
+
 
     return nodes;
 }
 
 
-float Motor::seguridadDelRey(Tablero* tablero) {
+float Motor::seguridadDelRey(Tablero *tablero) {
     float valor = 0;
 
-    //Chequear si hay peones en las casillas h2,g2 y f2 para el blanco
-    if(tablero->_turno == 0){
-        if((tablero->bitboards[0] & (0b1ULL | 0b10ULL)) > 0) {
 
-            if ((tablero->bitboards[5] & 0b1001ULL) > 0) {
+        if ((tablero->bitboards[0] & (0b1ULL | 0b10ULL)) > 0) {
+            U64 escudoDePeones = tablero->bitboards[5] & (0x100 | 0x200 | 0x400);
+            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
+            valor += constantes::premioEscudoDePeones * cantPeonesEscudo;
+           /* if ((tablero->bitboards[5] & 0x100) > 0) {
                 valor += constantes::premioEscudoDePeones;
             }
-            if ((tablero->bitboards[5] & 0b1010ULL) > 0) {
+            if ((tablero->bitboards[5] & 0x200) > 0) {
                 valor += constantes::premioEscudoDePeones;
             }
-            if ((tablero->bitboards[5] & 0b1011ULL) > 0) {
+            if ((tablero->bitboards[5] & 0x400) > 0) {
                 valor += constantes::premioEscudoDePeones;
-            }
- /*           if ((tablero->bitboards[4] & 0x40000) > 0){
-                valor += 20;
             }*/
-        }
-        else if((tablero->bitboards[0] & 0xe0) > 0) {
+            /*           if ((tablero->bitboards[4] & 0x40000) > 0){
+                           valor += 20;
+                       }*/
+        } else if ((tablero->bitboards[0] & 0xe0) > 0) {
+
+            U64 escudoDePeones = tablero->bitboards[5] & (0x2000 | 0x4000 | 0x8000);
+            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
+            valor += constantes::premioEscudoDePeones * cantPeonesEscudo;
+           /*
             if ((tablero->bitboards[5] & 0x2000) > 0) {
                 valor += constantes::premioEscudoDePeones;
             }
@@ -252,35 +310,43 @@ float Motor::seguridadDelRey(Tablero* tablero) {
             }
             if ((tablero->bitboards[5] & 0x8000) > 0) {
                 valor += constantes::premioEscudoDePeones;
-            }
- /*           if ((tablero->bitboards[4] & 0x200000) > 0){
-                valor += 20;
             }*/
-        }
-        else {
+            /*           if ((tablero->bitboards[4] & 0x200000) > 0){
+                           valor += 20;
+                       }*/
+        } else {
             valor -= constantes::castigoEnroqueSinEscudo;
         }
 
-    }
 
-    //Chequear lo mismo para las negras
-    else{
-        if((tablero->bitboards[6] & 0x300000000000000) > 0) {
+
+        //Chequear lo mismo para las negras
+        if ((tablero->bitboards[6] & 0x300000000000000ULL) > 0) {
+
+            U64 escudoDePeones = tablero->bitboards[11] & (0x1000000000000ULL | 0x2000000000000ULL | 0x4000000000000ULL);
+            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
+            valor -= constantes::premioEscudoDePeones * cantPeonesEscudo;
+            /*
             if ((tablero->bitboards[11] & 0x1000000000000ULL) > 0) {
                 valor -= constantes::premioEscudoDePeones;
             }
             if ((tablero->bitboards[11] & 0x2000000000000ULL) > 0) {
                 valor -= constantes::premioEscudoDePeones;
             }
-            if ((tablero->bitboards[11] & 0x3000000000000ULL) > 0) {
+            if ((tablero->bitboards[11] & 0x4000000000000ULL) > 0) {
                 valor -= constantes::premioEscudoDePeones;
-            }
-  /*          if ((tablero->bitboards[10] & 0x40000000000ULL) > 0) {
-                valor -= 20;
             }*/
-        }
-        else if((tablero->bitboards[6] & 0xe000000000000000ULL) > 0){
-            if ((tablero->bitboards[11] & 0x20000000000000ULL) > 0) {
+            /*          if ((tablero->bitboards[10] & 0x40000000000ULL) > 0) {
+                          valor -= 20;
+                      }*/
+        } else if ((tablero->bitboards[6] & 0xe000000000000000ULL) > 0) {
+
+            U64 escudoDePeones = tablero->bitboards[11] & (0x20000000000000ULL | 0x40000000000000ULL | 0x80000000000000ULL);
+            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
+            valor -= constantes::premioEscudoDePeones * cantPeonesEscudo;
+
+
+            /*if ((tablero->bitboards[11] & 0x20000000000000ULL) > 0) {
                 valor -= constantes::premioEscudoDePeones;
             }
             if ((tablero->bitboards[11] & 0x40000000000000ULL) > 0) {
@@ -288,117 +354,22 @@ float Motor::seguridadDelRey(Tablero* tablero) {
             }
             if ((tablero->bitboards[11] & 0x80000000000000ULL) > 0) {
                 valor -= constantes::premioEscudoDePeones;
-            }
- /*           if ((tablero->bitboards[10] & 0x200000000000ULL) > 0) {
-                valor -= 20;
             }*/
-        }
-        else{
+            /*           if ((tablero->bitboards[10] & 0x200000000000ULL) > 0) {
+                           valor -= 20;
+                       }*/
+        } else {
             valor += constantes::castigoEnroqueSinEscudo;
         }
 
 
 
-    }
-    return valor;
+    return tablero->_turno == 0 ? valor : -valor;
 
 }
 
-float Motor:: controlDeCentroCaballo(Tablero *tablero, int color) {
-    float valor = 0;
-    if(color == 0){
-        U64 bitboardCaballo = tablero->bitboards[4];
-        while(bitboardCaballo > 0){
-            int casilla = operaciones_bit::LSB(bitboardCaballo);
-            U64 attackMapCaballo = tablero->movimientosDeCaballo[casilla-1];
-            while(attackMapCaballo > 0){
-                int casillaAtacada = operaciones_bit::LSB(attackMapCaballo);
-                valor += constantes::casillasCentralesCaballoBlanco[casillaAtacada-1];
-            }
-        }
-    }
-    else{
-        U64 bitboardCaballo = tablero->bitboards[10];
-        while(bitboardCaballo > 0){
-            int casilla = operaciones_bit::LSB(bitboardCaballo);
-            U64 attackMapCaballo = tablero->movimientosDeCaballo[casilla-1];
-            while(attackMapCaballo > 0){
-                int casillaAtacada = operaciones_bit::LSB(attackMapCaballo);
-                valor -= constantes::casillasCentralesCaballoNegro[casillaAtacada-1];
-            }
-        }
-    }
-    return 1.7*valor;
-}
 
-float Motor:: controlDeCentroAlfil(Tablero* tablero, int color){
-    float valor = 0;
-    if(color == 0){
-        U64 bitboardAlfil = tablero->bitboards[3];
-        while(bitboardAlfil > 0){
-            int casilla = operaciones_bit::LSB(bitboardAlfil);
-
-            U64 attackMapAlfil = constantes::attackMasksAlfil[casilla-1];
-            U64 occupancy = tablero-> todas_las_piezas() & attackMapAlfil;
-            U64 magic = constantes::magicsParaAlfil[casilla-1];
-            U64 key = (occupancy * magic) >> (64 - 9);
-            attackMapAlfil = Tablero::movimientosDeAlfil[casilla-1][key];
-            while(attackMapAlfil > 0){
-                int casillaAtacada = operaciones_bit::LSB(attackMapAlfil);
-                valor += constantes::casillasCentralesAlfilBlanco[casillaAtacada-1];
-            }
-        }
-    }
-    else{
-        U64 bitboardAlfil = tablero->bitboards[9];
-        while(bitboardAlfil > 0){
-            int casilla = operaciones_bit::LSB(bitboardAlfil);
-            U64 attackMapAlfil = constantes::attackMasksAlfil[casilla-1];
-            U64 occupancy = tablero-> todas_las_piezas() & attackMapAlfil;
-            U64 magic = constantes::magicsParaAlfil[casilla-1];
-            U64 key = (occupancy * magic) >> (64 - 9);
-            attackMapAlfil = Tablero::movimientosDeAlfil[casilla-1][key];
-            while(attackMapAlfil > 0){
-                int casillaAtacada = operaciones_bit::LSB(attackMapAlfil);
-                valor -= constantes::casillasCentralesAlfilNegro[casillaAtacada-1];
-            }
-        }
-    }
-    return 2*valor;
-}
-
-float Motor:: controlDeCentroPeon(Tablero* tablero, int color){
-    float valor = 0;
-    if(color == 0){
-        U64 bitboardPeon = tablero->bitboards[5];
-        while(bitboardPeon > 0){
-            int casilla = operaciones_bit::LSB(bitboardPeon);
-            U64 attackMapPeon = Peon::capturas(casilla, 0, 0, 0);
-            while(attackMapPeon > 0){
-                int casillaAtacada = operaciones_bit::LSB(attackMapPeon);
-                valor += constantes::casillasCentralesPeonBlanco[casillaAtacada-1];
-            }
-        }
-    }
-    else{
-        U64 bitboardPeon = tablero->bitboards[11];
-        while(bitboardPeon > 0){
-            int casilla = operaciones_bit::LSB(bitboardPeon);
-            U64 attackMapPeon = Peon::capturas(casilla, 0, 0, 1);
-            while(attackMapPeon > 0){
-                int casillaAtacada = operaciones_bit::LSB(attackMapPeon);
-                valor -= constantes::casillasCentralesPeonNegro[casillaAtacada-1];
-            }
-        }
-    }
-    return 1.5*valor;
-}
-
-float Motor:: controlDeCentro(Tablero* tablero, int color){
-    return (controlDeCentroAlfil(tablero, color) + controlDeCentroCaballo(tablero, color) + controlDeCentroPeon(tablero, color));
-}
-
-float Motor:: contarMaterialSinPeones(Tablero* tablero) {
+float Motor::contarMaterialSinPeones(Tablero *tablero) {
     float valor = 0;
 
     U64 bitboard = tablero->bitboards[0];
@@ -452,18 +423,16 @@ float Motor:: contarMaterialSinPeones(Tablero* tablero) {
 
 float Motor::calcularOcupacionAlfil(Tablero *tablero, int color) {
     float valor = 0;
-    if(color == 0){
+    if (color == 0) {
         U64 bitboardAlfil = tablero->bitboards[3];
-        while(bitboardAlfil > 0){
+        while (bitboardAlfil > 0) {
             int casilla = operaciones_bit::LSB(bitboardAlfil);
-            valor += constantes::ocupacionAlfilBlanco[casilla-1];
+            valor += constantes::ocupacionAlfil[casilla - 1];
         }
-    }
-    else{
+    } else {
         U64 bitboardAlfil = tablero->bitboards[9];
-        while(bitboardAlfil > 0){
+        while (bitboardAlfil > 0) {
             int casilla = operaciones_bit::LSB(bitboardAlfil);
-            valor -= constantes::ocupacionAlfilNegro[casilla-1];
         }
     }
     return valor;
@@ -472,18 +441,16 @@ float Motor::calcularOcupacionAlfil(Tablero *tablero, int color) {
 
 float Motor::calcularOcupacionCaballo(Tablero *tablero, int color) {
     float valor = 0;
-    if(color == 0){
+    if (color == 0) {
         U64 bitboardCaballo = tablero->bitboards[4];
-        while(bitboardCaballo > 0){
+        while (bitboardCaballo > 0) {
             int casilla = operaciones_bit::LSB(bitboardCaballo);
-            valor += constantes::ocupacionCaballoBlanco[casilla-1];
+            valor += constantes::ocupacionCaballo[casilla - 1];
         }
-    }
-    else{
+    } else {
         U64 bitboardCaballo = tablero->bitboards[10];
-        while(bitboardCaballo > 0){
+        while (bitboardCaballo > 0) {
             int casilla = operaciones_bit::LSB(bitboardCaballo);
-            valor -= constantes::ocupacionCaballoNegro[casilla-1];
         }
     }
     return valor;
@@ -491,18 +458,16 @@ float Motor::calcularOcupacionCaballo(Tablero *tablero, int color) {
 
 float Motor::calcularOcupacionPeon(Tablero *tablero, int color) {
     float valor = 0;
-    if(color == 0){
+    if (color == 0) {
         U64 bitboardPeon = tablero->bitboards[5];
-        while(bitboardPeon > 0){
+        while (bitboardPeon > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeon);
-            valor += constantes::ocupacionPeonBlanco[casilla-1];
+            valor += constantes::ocupacionPeon[casilla - 1];
         }
-    }
-    else{
+    } else {
         U64 bitboardPeon = tablero->bitboards[11];
-        while(bitboardPeon > 0){
+        while (bitboardPeon > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeon);
-            valor -= constantes::ocupacionPeonNegro[casilla-1];
         }
     }
     return valor;
@@ -510,18 +475,16 @@ float Motor::calcularOcupacionPeon(Tablero *tablero, int color) {
 
 float Motor::calcularOcupacionTorre(Tablero *tablero, int color) {
     float valor = 0;
-    if(color == 0){
+    if (color == 0) {
         U64 bitboardTorre = tablero->bitboards[2];
-        while(bitboardTorre > 0){
+        while (bitboardTorre > 0) {
             int casilla = operaciones_bit::LSB(bitboardTorre);
-            valor += constantes::ocupacionTorreBlanco[casilla-1];
+            valor += constantes::ocupacionTorre[casilla - 1];
         }
-    }
-    else{
+    } else {
         U64 bitboardTorre = tablero->bitboards[8];
-        while(bitboardTorre > 0){
+        while (bitboardTorre > 0) {
             int casilla = operaciones_bit::LSB(bitboardTorre);
-            valor -= constantes::ocupacionTorreNegro[casilla-1];
         }
     }
     return valor;
@@ -529,18 +492,16 @@ float Motor::calcularOcupacionTorre(Tablero *tablero, int color) {
 
 float Motor::calcularOcupacionReina(Tablero *tablero, int color) {
     float valor = 0;
-    if(color == 0){
+    if (color == 0) {
         U64 bitboardReina = tablero->bitboards[1];
-        while(bitboardReina > 0){
+        while (bitboardReina > 0) {
             int casilla = operaciones_bit::LSB(bitboardReina);
-            valor += constantes::ocupacionReinaBlanco[casilla-1];
+            valor += constantes::ocupacionReina[casilla - 1];
         }
-    }
-    else{
+    } else {
         U64 bitboardReina = tablero->bitboards[7];
-        while(bitboardReina > 0){
+        while (bitboardReina > 0) {
             int casilla = operaciones_bit::LSB(bitboardReina);
-            valor -= constantes::ocupacionReinaNegro[casilla-1];
         }
     }
     return valor;
@@ -548,28 +509,22 @@ float Motor::calcularOcupacionReina(Tablero *tablero, int color) {
 
 float Motor::calcularOcupacionRey(Tablero *tablero, int color) {
     float valor = 0;
-    if(color == 0){
+    if (color == 0) {
         U64 bitboardRey = tablero->bitboards[0];
-        while(bitboardRey > 0){
+        while (bitboardRey > 0) {
             int casilla = operaciones_bit::LSB(bitboardRey);
-            if(endgame){
-                valor += constantes::ocupacionReyBlancoFinal[casilla-1];
-            }
-            else{
-                valor += constantes::ocupacionReyBlancoMedioJuego[casilla-1];
+            if (endgame) {
+                valor += constantes::ocupacionReyFinal[casilla - 1];
+            } else {
+                valor += constantes::ocupacionReyMedioJuego[casilla - 1];
             }
         }
-    }
-    else{
+    } else {
         U64 bitboardRey = tablero->bitboards[6];
-        while(bitboardRey > 0){
+        while (bitboardRey > 0) {
             int casilla = operaciones_bit::LSB(bitboardRey);
-            if(endgame){
-                valor -= constantes::ocupacionReyNegroFinal[casilla-1];
-            }
-            else{
-                valor -= constantes::ocupacionReyNegroMedioJuego[casilla-1];
-            }
+
+
         }
     }
     return valor;
@@ -578,30 +533,54 @@ float Motor::calcularOcupacionRey(Tablero *tablero, int color) {
 float Motor::calcularOcupacion(Tablero *tablero, int color) {
     float valor = 0;
 
-            valor += tablero->historialOcupacionBlancas.back();
-            valor += tablero->historialOcupacionNegras.back();
+    valor += tablero->historial_ocupacion_blancas[tablero->contadorOcupacion];
+    valor += tablero->historial_ocupacion_negras[tablero->contadorOcupacion];
 
 
-
-    return valor;
+    return (color == 0) ? valor : -valor;
 
 }
 
 
-float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, u_short &bestMove) {
+float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, bool esRaiz) {
+    U64 clave = tablero->zobrist;
     ply++;
-    bool reyEnJaque = tablero->reyPropioEnJaque(tablero->_turno);
-    /*if(reyEnJaque){
+    nodosBusqueda++;
+    index_repeticion++;
+    tabla_de_repeticiones[index_repeticion] = clave;
+    if(nodosBusqueda == 2048){
+        nodosBusqueda = 0;
+        auto timeEnd = std::chrono::steady_clock::now();
+        auto time = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart).count();
+        if(time > tiempoDisponible){
+            stopSearch = true;
+            return 0;
+        }
+    }
+    if (ply > 255) {
+        return valoracion(tablero);
+    }
+
+
+
+/*    if (tablero->reyPropioEnJaque(tablero->_turno)) {
         profundidad += 1;
-        incrementos += 1;
     }*/
+
+    if (!esRaiz) {
+        if (esRepeticion(clave)) {
+            return 0;
+        }
+    }
+
     if (!tablaInicializada) {
         TT->asignarTablero(tablero);
         tablaInicializada = true;
     }
 
-    TablaTrans::entrada e = TT->obtenerEntrada();
-    if (e.jugada != 0 && e.profundidad >= profundidad && e.clave == tablero->zobristKey()) {
+    Tabla_transposicion::entrada e = TT->obtenerEntrada(clave);
+    if (e.jugada != 0 && e.profundidad >= profundidad && e.clave == clave && !esRaiz) {
+        hashHits++;
         if (e.tipo == 0) {
             return e.valor;
         }
@@ -612,285 +591,326 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
             return beta;
         }
     }
-
-    if(tablero->esTripleRepeticion()){
-        return 0;
-    }
-    if (profundidad == 0) {
-        float puntaje = quiescence(tablero, alfa, beta);
-        TT->insertar(tablero->zobristKey(), puntaje, profundidad, 0, 1);
-        return puntaje;
-
+    nodos++;
+    if ((profundidad == 0) || (ply == 255)) {
+        ply--;
+        return quiescence(tablero, alfa, beta);
     }
 
 
-    // Null move pruning
-    // Null move pruning
-    u_short x;
+/*    if (profundidad == 0) {
+        return valoracion(tablero);
+    }*/
 
-    if (!reyEnJaque && profundidad >= 3 && ply >= 1 && tablero->_jugadas.back() != 1
-        && valoracion(tablero) >= beta) {
-        U64 zobrist = tablero->zobristKey();
-        tablero->cambiarTurno();
-        tablero->_jugadas.push_back(1);
-        float nullEval = -negamax(tablero, profundidad - 1 - 2, -beta, -beta + 1, x);
-        if (nullEval >= beta) {
-            tablero->cambiarTurno();
-            tablero->_jugadas.pop_back();
-            tablero->zobrist = zobrist;
-            
+
+    //Null move pruning
+    if (profundidad > 3 && (contarMaterialSinPeones(tablero) > 0) &&
+         (valoracion(tablero) > beta) && !(tablero->reyPropioEnJaque(tablero->_turno))) {
+        tablero->movimientoNulo();
+        float eval = -negamax(tablero, profundidad - 3, -beta, -beta + 1, false);
+        ply--;
+        index_repeticion--;
+        tablero->deshacerMovimientoNulo();
+        tablero->cantMovesGenerados[ply] = -1;
+
+        if (eval >= beta) {
             return beta;
         }
-        if(nullEval > alfa){
-            alfa = nullEval;
-        }
+    }
 
-        tablero->cambiarTurno();
-        tablero->_jugadas.pop_back();
-        tablero->zobrist = zobrist;
+
+    u_short mejorJugada = 0;
+    float maxEval = -50000;
+    tablero->generar_movimientos(tablero->_turno, ply);
+
+
+    U64 zobristPruebaPrioridad1 = tablero->zobrist;
+    Tabla_transposicion::entrada entrada = TT->obtenerEntrada(clave);
+
+
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        float prioridad = 0;
+        u_short movimiento = tablero->movimientos_generados[ply][i];
+        //string jugadaEscrita = tablero->formatearJugada(movimiento);;
+        if (esRaiz && (movimiento == bestMove)) {
+            prioridad = 999999999;
+        } else if ((entrada.jugada == movimiento) && entrada.profundidad >= profundidad && entrada.clave == clave) {
+            prioridad = 9999999;
+            hashHits++;
+
+        } else if (killerMove[0][ply] == movimiento) {
+            if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
+                                    operaciones_bit::getTipoDeJugada(movimiento))) {
+                prioridad = 200;
+                tablero->deshacerMovimiento();
+            }
+
+        } else if (killerMove[1][ply] == movimiento) {
+            if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
+                                    operaciones_bit::getTipoDeJugada(movimiento))) {
+                prioridad = 200;
+                tablero->deshacerMovimiento();
+            }
+        } else {
+            //Ordenamos capturas según el valor de la pieza capturada - pieza que captura
+
+            if (tablero->esCaptura(movimiento)) {
+                prioridad = (abs(constantes::valorPieza[tablero->obtenerTipoDePieza(
+                        operaciones_bit::getLlegada(movimiento))]) -
+                             abs(constantes::valorPieza[tablero->obtenerTipoDePieza(
+                                     operaciones_bit::getSalida(movimiento))]));
+            }
+
+            if (tablero->esUnaPromocion(movimiento)) {
+                prioridad += 180;
+            }
+
+            if (tablero->esUnJaque(movimiento)) {
+                prioridad += 180;
+            }
+
+            prioridad += operaciones_bit::getTipoDeJugada(movimiento);
+        }
+        prioridades[ply][i] = prioridad;
+
+
     }
 
 
 
-    float maxEval = -99999999;
-
-   /* if (bestMove != 0) {
-        // Si bestMove es válido, evalúa esa jugada primero
-        if (tablero->moverPieza(operaciones_bit::getSalida(bestMove), operaciones_bit::getLlegada(bestMove), operaciones_bit::getTipoDeJugada(bestMove))) {
-            u_short posBestMove;
-            maxEval = -negamax(tablero, profundidad - 1, -beta, -alfa, posBestMove);
-            tablero->deshacerMovimiento();
-
-            if (maxEval >= beta) {
-                TT->insertar(tablero->zobristKey(), beta, profundidad, 2, bestMove);
-                return beta;
-            }
-
-            alfa = std::max(alfa, maxEval);
-        }
-    }*/
-    vector<u_short> movimientos = tablero->generar_movimientos(tablero->_turno);
-
-
-
-    vector<pair<u_short, float>> movimientosConPrioridad;
-
-    for (auto &movimiento : movimientos) {
-        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento), operaciones_bit::getTipoDeJugada(movimiento))) {
-            TablaTrans::entrada e = TT->obtenerEntrada();
-            float prioridad = 0.0;
-
-            if(ply == 0 && movimiento == bestMove){
-                prioridad = 10000000;
-
-            }
-            else if (e.jugada != 0 && e.profundidad >= profundidad && e.clave == tablero->zobristKey()) {
-
-                prioridad = (tablero->_turno == 1) ? -e.valor : e.valor;
 
 /*
-            prioridad = e.valor;D
+    sort(movimientosConPrioridad.begin(), movimientosConPrioridad.end(),
+         [](const pair<u_short, float> &a, const pair<u_short, float> &b) {
+             return a.second > b.second;
+         });
 */
+    int cantidadDeMovesBuscados = 0;
 
 
-                prioridad = prioridad + operaciones_bit::getTipoDeJugada(movimiento);
-
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        int maxIndex = 0;
+        for (int j = 0; j <= tablero->cantMovesGenerados[ply]; j++) {
+            if (prioridades[ply][j] >= prioridades[ply][maxIndex]) {
+                maxIndex = j;
             }
-
-            else {
-                // Si el movimiento no está en la tabla de transposición, asigna la prioridad basándote en el tipo de movimiento
-                prioridad = operaciones_bit::getTipoDeJugada(movimiento);
-            }
-            movimientosConPrioridad.push_back(make_pair(movimiento, prioridad));
-            tablero->deshacerMovimiento();
         }
-    }
+        u_short movimiento = tablero->movimientos_generados[ply][maxIndex];
+        prioridades[ply][maxIndex] = -1000000000;
 
-    sort(movimientosConPrioridad.begin(), movimientosConPrioridad.end(), [](const pair<u_short, float>& a, const pair<u_short, float>& b) {
-        return a.second > b.second;
-    });
-
-    //Si no hay movimientos disponibles es porque la partida terminó en mate o tablas
-    if(movimientosConPrioridad.empty()){
-
-        //Si el rey está en jaque entonces es jaque mate, se devuelve un valor alto.
-        if(reyEnJaque){
-/*            u_short jaque_mate = operaciones_bit::crearJugada(operaciones_bit::getSalida(bestMove),
-                                                              operaciones_bit::getLlegada(bestMove),
-                                                              CHECKMATE);
-            bestMove = jaque_mate;*/
-            return valoracion(tablero) - 999999;
-        }
-
-        //Si no está en jaque entonces son tablas, se devuelve 0
-        else{
-            return 0;
-        }
-    }
-    int aumentoProfundidad = 0;
-    if(movimientosConPrioridad.size() == 1){
-        aumentoProfundidad += 1;
-    }
-
-
-    u_short maxMove = 0;
-    int movimientosEnMaxDepth = 4;
-    int minimoParaReduccion = 3;
-    int movimientosBuscados = 0;
-
-    for (auto &par : movimientosConPrioridad) {
-        u_short movimiento = par.first;
-        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento), operaciones_bit::getTipoDeJugada(movimiento))) {
-            u_short posBestMove;
+        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
+                                operaciones_bit::getTipoDeJugada(movimiento))) {
             float eval;
-            int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
-            nodos++;
 
+            if (!LMR && (cantidadDeMovesBuscados >= 2) && (profundidad > 2) &&
+            !tablero->esUnJaque(movimiento)
+            && !tablero->esCaptura(movimiento) &&
+                    (movimiento != killerMove[0][ply]) && (movimiento != killerMove[1][ply]) &&
+                !tablero->reyPropioEnJaque(tablero->_turno)) {
+                LMR = true;
+                eval = -negamax(tablero, profundidad - 2, -alfa - 1, -alfa, false);
 
-   /*         // Futility pruning
-            if (profundidad == 1 && !reyEnJaque && operaciones_bit::getTipoDeJugada(movimiento) != CAPTURE
-            && operaciones_bit::getTipoDeJugada(movimiento) != CAPTURECHECK && operaciones_bit::getTipoDeJugada(movimiento) != CHECK){
-                float futility_margin = 200;  // Define a suitable futility margin.
-                float static_eval = valoracion(tablero);
-                if (static_eval + futility_margin < alfa) {
+                ply--;
+                index_repeticion--;
+
+                LMR = false;
+                if ((eval < alfa)) {
                     tablero->deshacerMovimiento();
                     continue;
                 }
-            }*/
-
-            /*// Recapture extension
-            if(tablero->seRecapturo()){
-                profundidad += 1;
-            }*/
-
-            if(movimientosBuscados == 0){
-                eval = -negamax(tablero, profundidad + aumentoProfundidad -1, -beta, -alfa, posBestMove);
             }
-            else{
-                if (movimientosBuscados > movimientosEnMaxDepth && profundidad >= minimoParaReduccion
-                    && tipoDeJugada != CHECK && tipoDeJugada != CAPTURE && tipoDeJugada != CAPTURECHECK
-                    && !reyEnJaque) {
-                    u_short posBestMove2;
-                    eval = -negamax(tablero, profundidad + aumentoProfundidad - 2, -(alfa + 1), -alfa, posBestMove2);
-                } else {
-                    eval = alfa + 1;
-                }
-                    if (eval > alfa) {
-                        u_short posBestMove3;
-                        eval = -negamax(tablero, profundidad + aumentoProfundidad - 1, -(alfa + 1), -alfa,  posBestMove3);
-                        if (eval > alfa && eval < beta) {
-                            u_short posBestMove4;
-                            eval = -negamax(tablero, profundidad + aumentoProfundidad - 1, -beta, -alfa, posBestMove4);
-                        }
-                    }
-            }
+
+
+            eval = -negamax(tablero, profundidad - 1, -beta, -alfa, false);
+            cantidadDeMovesBuscados++;
+            ply--;
+            index_repeticion--;
+
             tablero->deshacerMovimiento();
+            if (stopSearch) {
+                tablero->cantMovesGenerados[ply] = -1;
+                return 0;
+            }
 
             if (eval > maxEval) {
-
+                if(esRaiz && !stopSearch){
+                    bestMove = movimiento;
+                }
                 maxEval = eval;
-                maxMove = movimiento;
+                mejorJugada = movimiento;
+               /* if (esRaiz) {
+                    cout << "Hasta ahora la mejor jugada es:" << tablero->formatearJugada(mejorJugada) << endl;
+                }*/
             }
-
-
-
-            if (eval >= beta) {
-                TT->insertar(tablero->zobristKey(), beta, profundidad, 2, movimiento);
-                return beta;
-            }
-
             alfa = std::max(alfa, eval);
-            movimientosBuscados++;
+            if (alfa >= beta) {
+                //Killer move
+                u_short killer = movimiento;
+                if (operaciones_bit::getTipoDeJugada(killer) == QUIET) {
+                    killerMove[1][ply] = killerMove[0][ply];
+                    killerMove[0][ply] = killer;
+                }
+                break;
+            }
         }
 
     }
-    if(maxMove != 0){
-        bestMove = maxMove;
-        TT->insertar(tablero->zobristKey(), maxEval, profundidad, (maxEval <= alfa) ? 1 : 0, maxMove);
 
+    tablero->cantMovesGenerados[ply] = -1;
+
+    if (cantidadDeMovesBuscados == 0) {
+        if (tablero->reyPropioEnJaque(tablero->_turno)) {
+            return -10000000;
+        } else {
+            return 0;
+        }
     }
 
+/*    U64 clave2 = tablero->zobrist;
+    if(clave2 != clave) {
+        cout << "Clave 1: " << clave << endl;
+        cout << "Clave 2: " << clave2 << endl;
+    }*/
+    if (esRaiz && (mejorJugada != 0)) {
+        bestMove = mejorJugada;
+    }
+    int tipoEntrada = 0;
+    if (maxEval <= alfa) {
+        tipoEntrada = 1;
+    } else if (maxEval >= beta) {
+        tipoEntrada = 2;
+    }
+    TT->insertar(clave, maxEval, profundidad, tipoEntrada, mejorJugada);
 
 
     return maxEval;
 }
 
+bool Motor::esRepeticion(U64 zobristActual) {
+    for (int i = 0; i < index_repeticion; i++) {
+        if (tabla_de_repeticiones[i] == zobristActual) {
+            return true;
+        }
+    }
+    return false;
+}
+
 float Motor::quiescence(Tablero *tablero, float alfa, float beta) {
+    ply++;
+    nodos++;
     float stand_pat = valoracion(tablero);
-    alfa = max(alfa, stand_pat);
-    if(stand_pat >= beta){
+    float max_value = stand_pat;
+
+    if (((stand_pat) >= beta) || (ply == 256)) {
         return stand_pat;
     }
+    alfa = max(alfa, stand_pat);
 
-    vector<u_short> movimientos = tablero->generar_capturas(tablero->_turno);
-    // Ordenar los movimientos
-    movimientos.erase(std::remove_if(movimientos.begin(), movimientos.end(), [&](const u_short& a) {
-        float valorA = abs(constantes::valorPieza[tablero->obtenerTipoDePieza(operaciones_bit::getLlegada(a))]) -
-                       abs(constantes::valorPieza[tablero->obtenerTipoDePieza(operaciones_bit::getSalida(a))]);
-        return valorA < 0;
-    }), movimientos.end());
-    std::sort(movimientos.begin(), movimientos.end(), [&](const u_short& a, const u_short& b) {
-        float valorA = abs(constantes::valorPieza[tablero->obtenerTipoDePieza(operaciones_bit::getLlegada(a))]) -
-                abs(constantes::valorPieza[tablero->obtenerTipoDePieza(operaciones_bit::getSalida(a))]);
-        float valorB = abs(constantes::valorPieza[tablero->obtenerTipoDePieza(operaciones_bit::getLlegada(b))]) -
-                abs(constantes::valorPieza[tablero->obtenerTipoDePieza(operaciones_bit::getSalida(b))]);
 
-            return valorA > valorB;
+    tablero->generar_capturas(tablero->_turno, ply);
 
-    });
-    for (auto &movimiento : movimientos) {
-        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento), CAPTURE)) {
+    //Me quedo con los movimientos que son capturas
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        int from = operaciones_bit::getSalida(tablero->movimientos_generados[ply][i]);
+        int to = operaciones_bit::getLlegada(tablero->movimientos_generados[ply][i]);
+
+        puntajeCaptura[ply][i] = abs(constantes::valorPieza[tablero->obtenerTipoDePieza(to)]) -
+                                 abs(constantes::valorPieza[tablero->obtenerTipoDePieza(from)]);
+    }
+
+    // Filtrar movimientos con score negativo (remover malas capturas)
+    int validCount = -1;
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        if (puntajeCaptura[ply][i] >= 0) {
+            validCount++;
+            tablero->movimientos_generados[ply][validCount] = tablero->movimientos_generados[ply][i];
+            puntajeCaptura[ply][validCount] = puntajeCaptura[ply][i];
+
+        }
+    }
+    tablero->cantMovesGenerados[ply] = validCount;
+
+    // Ordenar de mayor a menor usando bubble sort in-place
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        for (int j = i + 1; j <= tablero->cantMovesGenerados[ply]; j++) {
+            if (puntajeCaptura[ply][j] > puntajeCaptura[ply][i]) {
+                std::swap(tablero->movimientos_generados[ply][i], tablero->movimientos_generados[ply][j]);
+                std::swap(puntajeCaptura[ply][i], puntajeCaptura[ply][j]);
+            }
+        }
+    }
+
+
+    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+        u_short movimiento = tablero->movimientos_generados[ply][i];
+        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
+                                operaciones_bit::getTipoDeJugada(movimiento))) {
             float score = -quiescence(tablero, -beta, -alfa);
+            ply--;
             tablero->deshacerMovimiento();
 
             if (score >= beta) {
-                return beta;
+                tablero->cantMovesGenerados[ply] = -1;
+                return score;
             }
+
+            if (score > max_value) {
+                max_value = score;
+            }
+
             if (score > alfa) {
                 alfa = score;
             }
         }
 
     }
+    tablero->cantMovesGenerados[ply] = -1;
 
-    return alfa;
+    return max_value;
 }
 
 float Motor::calcularDesarrollo(Tablero *tablero, int color) {
     float valoracion = 0;
 
-        if(!tablero->desarrolloBlancasCompleto()){
-            if(!tablero->desarrolloCaballoBlancoG()){
-                valoracion -= constantes::premioDesarrolloPiezaMenor;
-            }
-            if(!tablero->desarrolloCaballoBlancoB()){
-                valoracion -= constantes::premioDesarrolloPiezaMenor;
-            }
-            if(!tablero->desarrolloAlfilBlancoF()){
-                valoracion -= constantes::premioDesarrolloPiezaMenor;
-            }
-            if(!tablero->desarrolloAlfilBlancoC()){
-                valoracion -= constantes::premioDesarrolloPiezaMenor;
-            }
+    if (!tablero->desarrolloBlancasCompleto()) {
+        if (!tablero->desarrolloCaballoBlancoG()) {
+            valoracion -= constantes::premioDesarrolloPiezaMenor;
         }
-
-
-        if(!tablero->desarrolloNegrasCompleto()){
-            if(!tablero->desarrolloCaballoNegroG()){
-                valoracion += constantes::premioDesarrolloPiezaMenor;
-            }
-            if(!tablero->desarrolloCaballoNegroB()){
-                valoracion += constantes::premioDesarrolloPiezaMenor;
-            }
-            if(!tablero->desarrolloAlfilNegroF()){
-                valoracion += constantes::premioDesarrolloPiezaMenor;
-            }
-            if(!tablero->desarrolloAlfilNegroC()){
-                valoracion += constantes::premioDesarrolloPiezaMenor;
-            }
+        if (!tablero->desarrolloCaballoBlancoB()) {
+            valoracion -= constantes::premioDesarrolloPiezaMenor;
         }
+        if (!tablero->desarrolloAlfilBlancoF()) {
+            valoracion -= constantes::premioDesarrolloPiezaMenor;
+        }
+        if (!tablero->desarrolloAlfilBlancoC()) {
+            valoracion -= constantes::premioDesarrolloPiezaMenor;
+        }
+    }
 
 
-return valoracion;
+    if (!tablero->desarrolloNegrasCompleto()) {
+        if (!tablero->desarrolloCaballoNegroG()) {
+            valoracion += constantes::premioDesarrolloPiezaMenor;
+        }
+        if (!tablero->desarrolloCaballoNegroB()) {
+            valoracion += constantes::premioDesarrolloPiezaMenor;
+        }
+        if (!tablero->desarrolloAlfilNegroF()) {
+            valoracion += constantes::premioDesarrolloPiezaMenor;
+        }
+        if (!tablero->desarrolloAlfilNegroC()) {
+            valoracion += constantes::premioDesarrolloPiezaMenor;
+        }
+    }
+
+
+    return (color == 0) ? valoracion : -valoracion;
 
 }
+
+//Indica qué porcentaje de la tabla tiene alguna entrada
+int Motor::porcentajeTabla() {
+
+    return TT->count;
+}
+

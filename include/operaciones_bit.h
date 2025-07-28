@@ -7,8 +7,10 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <map>
 
 typedef unsigned long long U64;
+typedef u_int8_t int8;
 
 namespace operaciones_bit {
     // Pone un bit en la posición indicada ..

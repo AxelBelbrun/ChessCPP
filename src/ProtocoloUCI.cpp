@@ -2,6 +2,7 @@
 
 #include "ProtocoloUCI.h"
 #include <iostream>
+#include <chrono>
 
 using namespace std;
 
@@ -10,6 +11,82 @@ using namespace std;
 ProtocoloUCI:: ProtocoloUCI() {
 
 }
+
+std::string ProtocoloUCI:: formatearJugada(u_short jugada){
+    string jugadaString;
+    int salida, llegada;
+    //Chequear el tipo de jugada para imprimir la jugada en el formato correcto
+    int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
+    if(tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK){
+        llegada = operaciones_bit::getLlegada(jugada);
+        int piezaAPromover = operaciones_bit::getSalida(jugada);
+
+        if(llegada > 32) {
+            salida = llegada - 8;
+        }
+        else{
+            salida = llegada + 8;
+        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
+
+    }
+    else if(tipoDeJugada == PROMOTIONDER || tipoDeJugada == CPDC){
+        llegada = operaciones_bit::getLlegada(jugada);
+        int piezaAPromover = operaciones_bit::getSalida(jugada);
+        if(llegada > 32) {
+            salida = llegada - 7;
+        }
+        else{
+            salida = llegada + 7;
+        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
+
+    }
+    else if(tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == CPIC) {
+        llegada = operaciones_bit::getLlegada(jugada);
+        int piezaAPromover = operaciones_bit::getSalida(jugada);
+        if (llegada > 32) {
+            salida = llegada - 9;
+        } else {
+            salida = llegada + 9;
+        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
+
+    }
+    else {
+        salida = operaciones_bit::getSalida(jugada);
+        llegada = operaciones_bit::getLlegada(jugada);
+
+        jugadaString += constantes::NumeroACasilla[salida];
+        jugadaString += constantes::NumeroACasilla[llegada];
+    }
+    return jugadaString;
+}
+
+
+std::string ProtocoloUCI:: generarJugadaString(int piezaAPromover, int salida, int llegada) {
+    std::string jugadaString = "";
+    jugadaString += constantes::NumeroACasilla[salida];
+    jugadaString += constantes::NumeroACasilla[llegada];
+
+    switch(piezaAPromover) {
+        case DAMA:
+            jugadaString += "q";
+            break;
+        case TORRE:
+            jugadaString += "r";
+            break;
+        case ALFIL:
+            jugadaString += "b";
+            break;
+        case CABALLO:
+            jugadaString += "n";
+            break;
+    }
+
+    return jugadaString;
+}
+
 
 void ProtocoloUCI:: comunicacionUCI() {
     while (true) {
@@ -32,7 +109,7 @@ void ProtocoloUCI:: comunicacionUCI() {
             inputPosition(input);
 
         } else if (input.substr(0,2) ==  "go") {
-            inputGo();
+            inputGo(input);
         } else if(input.substr(0,4) == "quit"){
             delete motor->TT;
 
@@ -83,164 +160,49 @@ void ProtocoloUCI:: inputPosition(string input) {
             else {
                 delete tablero;
                 tablero = new Tablero(input);
+                tablero->imprimirTablero();
                 motor->TT->asignarTablero(tablero);
                 posicionSeteada = true;
                 return;
             }
         }
 
-        //se realiza la ultima jugada que aparece en el string. Primero se chequea si es una promoción..
+        //se realiza la ultima jugada que aparece en el string.
         int i = input.size() - 5;
         string jugada = input.substr(i, 5);
         int salida, llegada;
-
-        if (jugada.substr(4, 1) == "q") {
-            salida = constantes::casillaANumero[jugada.substr(0, 2)];
-            llegada = constantes::casillaANumero[jugada.substr(2, 2)];
-            if (salida == llegada + 8 || salida == llegada - 8) {
-                tablero->moverPieza(1, llegada, PROMOTION);
-            } else if (salida == llegada + 7 || salida == llegada - 7) {
-                tablero->moverPieza(1, llegada, PROMOTIONDER);
-            } else if (salida == llegada + 9 || salida == llegada - 9) {
-                tablero->moverPieza(1, llegada, PROMOTIONIZQ);
-            }
-            if(tablero->ganoNegro){
-                cout << "Han ganado las negras!" << endl;
-                exit(0);
-            }
-            else if(tablero->ganoBlanco){
-                cout << "Han ganado las blancas!" << endl;
-                exit(0);
-            }
-            return;
-
-        } else if (jugada.substr(4, 1) == "r") {
-            salida = constantes::casillaANumero[jugada.substr(0, 2)];
-            llegada = constantes::casillaANumero[jugada.substr(2, 2)];
-            if (salida == llegada + 8 || salida == llegada - 8) {
-                tablero->moverPieza(2, llegada, PROMOTION);
-            } else if (salida == llegada + 7 || salida == llegada - 7) {
-                tablero->moverPieza(2, llegada, PROMOTIONDER);
-            } else if (salida == llegada + 9 || salida == llegada - 9) {
-                tablero->moverPieza(2, llegada, PROMOTIONIZQ);
-            }
-            if(tablero->ganoNegro){
-                cout << "Han ganado las negras!" << endl;
-                exit(0);
-            }
-            else if(tablero->ganoBlanco){
-                cout << "Han ganado las blancas!" << endl;
-                exit(0);
-            }
-            return;
-        } else if (jugada.substr(4, 1) == "b") {
-            salida = constantes::casillaANumero[jugada.substr(0, 2)];
-            llegada = constantes::casillaANumero[jugada.substr(2, 2)];
-            if (salida == llegada + 8 || salida == llegada - 8) {
-                tablero->moverPieza(3, llegada, PROMOTION);
-            } else if (salida == llegada + 7 || salida == llegada - 7) {
-                tablero->moverPieza(3, llegada, PROMOTIONDER);
-            } else if (salida == llegada + 9 || salida == llegada - 9) {
-                tablero->moverPieza(3, llegada, PROMOTIONIZQ);
-            }
-            if(tablero->ganoNegro){
-                cout << "Han ganado las negras!" << endl;
-                exit(0);
-            }
-            else if(tablero->ganoBlanco){
-                cout << "Han ganado las blancas!" << endl;
-                exit(0);
-            }
-            return;
-        } else if (jugada.substr(4, 1) == "n") {
-            salida = constantes::casillaANumero[jugada.substr(0, 2)];
-            llegada = constantes::casillaANumero[jugada.substr(2, 2)];
-            if (salida == llegada + 8 || salida == llegada - 8) {
-                tablero->moverPieza(4, llegada, PROMOTION);
-            } else if (salida == llegada + 7 || salida == llegada - 7) {
-                tablero->moverPieza(4, llegada, PROMOTIONDER);
-            } else if (salida == llegada + 9 || salida == llegada - 9) {
-                tablero->moverPieza(4, llegada, PROMOTIONIZQ);
-            }
-            if(tablero->ganoNegro){
-                cout << "Han ganado las negras!" << endl;
-                exit(0);
-            }
-            else if(tablero->ganoBlanco){
-                cout << "Han ganado las blancas!" << endl;
-                exit(0);
-            }
+        if(jugada[0] == ' '){
+            jugada = jugada.substr(1, 4);
         }
+        tablero->generar_movimientos(tablero->_turno, 0);
+        for(int j = 0; j <= tablero->cantMovesGenerados[0]; j++){
+            u_short move = tablero->movimientos_generados[0][j];
+            if(jugada == formatearJugada(move)){
+                tablero->moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move), operaciones_bit::getTipoDeJugada(move));
+                motor->TT->limpiarTabla();
+/*
+                tablero->imprimirTablero();
+*/
+                tablero->cantMovesGenerados[0] = -1;
 
-        //Si no es una promoción, podría ser enpassant
-        else {
-
-            //Se toman los caracteres desde la posición 1 porque, como no entró en ningún if de arriba,
-            //entonces en la primera posición va a haber un espacio
-
-            /* Por ejemplo, si se tuviera una promoción, los últimos 5 caractéres del string serían del
-             * estilo: "e7e8q". Si no es una promoción, entonces los últimos 5 caracteres serían del estilo
-             * " e7e5". Por eso, para tomar la jugada, se toman los caracteres desde la posición 1.
-             */
-            salida = constantes::casillaANumero[jugada.substr(1, 2)];
-            llegada = constantes::casillaANumero[jugada.substr(3, 2)];
-            int tipoDePieza = tablero->obtenerTipoDePieza(salida);
-            if (tipoDePieza == PEON) {
-                //Si nos movimos en diagonal (hay 4 posibilidades, contempladas con las restas
-                // entre las casillas de salida y llegada) y la casilla de llegada está vacía,
-                // entonces es un enpassant
-                if ((tablero->obtenerTipoDePieza(llegada) == VACIO) &&
-                    ((salida - llegada == 7) || (salida - llegada == -7)
-                     || (salida - llegada == 9) || (salida - llegada == -9))) {
-                    tablero->moverPieza(salida, llegada, ENPASSANT);
-                    if(tablero->ganoNegro){
-                        cout << "Han ganado las negras!" << endl;
-                        delete tablero;
-                        delete motor->TT;
-                        delete motor;
-
-                        exit(0);
-                    }
-                    else if(tablero->ganoBlanco){
-                        cout << "Han ganado las blancas!" << endl;
-                        delete tablero;
-                        delete motor->TT;
-                        delete motor;
-                        exit(0);
-                    }
-                    return;
+                if(tablero->ganoNegro){
+                    cout << "Han ganado las negras!" << endl;
+                    delete tablero;
+                    delete motor->TT;
+                    delete motor;
+                    exit(0);
                 }
+                else if(tablero->ganoBlanco){
+                    cout << "Han ganado las blancas!" << endl;
+                    delete tablero;
+                    delete motor->TT;
+                    delete motor;
+                    exit(0);
+                }
+                return;
             }
-
-            //Si no es ninguno de los "movimientos especiales" entonces simplemente se realiza sin chequear
-            // nada más
-            u_short jugadaUshort = operaciones_bit::crearJugada(salida, llegada, 0);
-            int tipoDeJugada;
-            if(tablero->obtenerTipoDePieza(llegada) != VACIO){
-                tipoDeJugada = CAPTURE;
-            }
-            else{
-                tipoDeJugada = QUIET;
-            }
-            //Se usa la función que asume que el movimiento que se pasa es legal
-            tablero->moverPiezaTrusted(operaciones_bit::getSalida(jugadaUshort),
-                                       operaciones_bit::getLlegada(jugadaUshort), tipoDeJugada);
-            if(tablero->ganoNegro){
-                cout << "Han ganado las negras!" << endl;
-                delete tablero;
-                delete motor->TT;
-                delete motor;
-                exit(0);
-            }
-            else if(tablero->ganoBlanco){
-                cout << "Han ganado las blancas!" << endl;
-                delete tablero;
-                delete motor->TT;
-                delete motor;
-                exit(0);
-            }
-
         }
+
         
     }
 
@@ -264,25 +226,76 @@ void ProtocoloUCI:: inputPosition(string input) {
     }
 }
 
-void ProtocoloUCI:: inputGo() {
-    u_short jugada;
-    //Iterative deepening
-    int a, b;
-    for(int i = 1; i < 9; i++){
-        if(i == 1){
-            jugada = 0;
-        }
+void ProtocoloUCI:: inputGo(string input) {
+    // Tiempo e incrementos (en milisegundos)
+    long long wt = 0, bt = 0, winc = 0, binc = 0;
+    size_t pos;
+    int prof = 0;
 
-        motor -> ply = -1;
-        motor -> incrementos = 0;
-        if(tablero->endgame){
-            motor->negamax(tablero, i+8, -999999999, 999999999, jugada);
-
+    // Extraer el tiempo y el incremento del input
+    if (tablero->_turno == 0) { // Blanco
+        if ((pos = input.find("wtime")) != string::npos) {
+            wt = static_cast<long long>(stod(input.substr(pos + 6)));
         }
-        else {
-            motor->negamax(tablero, i, -999999999, 999999999, jugada);
+        if ((pos = input.find("winc")) != string::npos) {
+            winc = static_cast<long long>(stod(input.substr(pos + 5)));
+        }
+    } else { // Negro
+        if ((pos = input.find("btime")) != string::npos) {
+            bt = static_cast<long long>(stod(input.substr(pos + 6)));
+        }
+        if ((pos = input.find("binc")) != string::npos) {
+            binc = static_cast<long long>(stod(input.substr(pos + 5)));
         }
     }
+
+    // Determinar el tiempo disponible para esta jugada
+    long long tiempo = (tablero->_turno == 0) ? wt : bt;
+    long long incremento = (tablero->_turno == 0) ? winc : binc;
+
+    // Heurística de gestión del tiempo (20 jugadas restantes como estimación)
+    motor->tiempoDisponible = tiempo / 20 + incremento / 2;
+
+    // Iniciar búsqueda
+    motor->timeStart = chrono::steady_clock::now();
+    motor->stopSearch = false;
+
+    int i = 1;
+    while (i < 40) {
+        if (i == 1) {
+            motor->bestMove = 0;
+        }
+
+        motor->ply = -1;
+        motor->nodosBusqueda = 0;
+        motor->incrementos = 0;
+        motor->nodos = 0;
+
+        motor->negamax(tablero, i, -999999999, 999999999, true);
+
+        // Verificar si se agotó el tiempo
+        auto now = chrono::steady_clock::now();
+        long long tiempoTranscurrido = chrono::duration_cast<chrono::milliseconds>(now - motor->timeStart).count();
+        std::cout << "Profundidad: " << i
+                  << ", Tiempo transcurrido: " << tiempoTranscurrido
+                  << " / " << motor->tiempoDisponible << " ms" << std::endl;
+
+        if (tiempoTranscurrido >= motor->tiempoDisponible) {
+            break;
+        }
+
+        ++i;
+        prof = i;
+    }
+
+/*
+    chrono::steady_clock::time_point end = chrono::steady_clock::now();
+*/
+
+    /*//Tiempo en segundos
+    cout << "Tiempo de busqueda: " << chrono::duration_cast<chrono::seconds>(end - motor->timeStart).count() << "s" << endl;
+
+    cout << "Cantidad de nodos buscados: " << motor-> nodos << endl;*/
 
 
 
@@ -290,6 +303,7 @@ void ProtocoloUCI:: inputGo() {
 
     string jugadaString;
     int salida, llegada;
+    u_short jugada = motor->bestMove;
 
     //Chequear el tipo de jugada para imprimir la jugada en el formato correcto
     int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
@@ -303,26 +317,7 @@ void ProtocoloUCI:: inputGo() {
         else{
             salida = llegada + 8;
         }
-        if(piezaAPromover == DAMA){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "q";
-        }
-        else if(piezaAPromover == TORRE){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "r";
-        }
-        else if(piezaAPromover == ALFIL){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "b";
-        }
-        else if(piezaAPromover == CABALLO){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "n";
-        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
         salida = operaciones_bit::getSalida(jugada);
 
     }
@@ -335,26 +330,7 @@ void ProtocoloUCI:: inputGo() {
         else{
             salida = llegada + 7;
         }
-        if(piezaAPromover == DAMA){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "q";
-        }
-        else if(piezaAPromover == TORRE){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "r";
-        }
-        else if(piezaAPromover == ALFIL){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "b";
-        }
-        else if(piezaAPromover == CABALLO){
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "n";
-        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
         salida = operaciones_bit::getSalida(jugada);
 
     }
@@ -366,23 +342,7 @@ void ProtocoloUCI:: inputGo() {
         } else {
             salida = llegada + 9;
         }
-        if (piezaAPromover == DAMA) {
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "q";
-        } else if (piezaAPromover == TORRE) {
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "r";
-        } else if (piezaAPromover == ALFIL) {
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "b";
-        } else if (piezaAPromover == CABALLO) {
-            jugadaString += constantes::NumeroACasilla[salida];
-            jugadaString += constantes::NumeroACasilla[llegada];
-            jugadaString += "n";
-        }
+        jugadaString = generarJugadaString(piezaAPromover, salida, llegada);
         salida = operaciones_bit::getSalida(jugada);
 
     }
@@ -396,8 +356,22 @@ void ProtocoloUCI:: inputGo() {
 
     //Antes de imprimir la jugada, se realiza en el tablero interno
     tablero->moverPieza(salida, llegada, tipoDeJugada);
-    motor->TT->limpiarTabla();
+/*
     tablero->imprimirTablero();
+*/
+    cout << "bestmove " << jugadaString << endl;
+    cout << "profundidad alcanzada: " << prof << endl;
+   // cout << "cantidad de nodos buscados: " << motor->nodos << endl;
+    /*cout << "cantidad de hits: " << motor->hashHits << endl;*/
+    //cout << "Porcentaje de tabla de transposicion llena:" <<
+         //motor->porcentajeTabla() << endl;
+    motor->TT->limpiarTabla();
+    motor->index_repeticion = tablero->contadorJugadas;
+    U64 claveActual = tablero->zobrist;
+    motor->tabla_de_repeticiones[motor->index_repeticion] = claveActual;
+    for(int i = 0; i < 256; i++){
+        tablero->cantMovesGenerados[i] = -1;
+    }
     if(tablero->ganoNegro){
         cout << "Han ganado las negras!" << endl;
         exit(0);
@@ -407,8 +381,8 @@ void ProtocoloUCI:: inputGo() {
         exit(0);
     }
 
-    cout << "bestmove " << jugadaString << endl;
-    cout << "cantidad de nodos" << motor->nodos << endl;
+
+
 /*
     tablero->imprimirTablero();
 */

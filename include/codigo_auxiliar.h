@@ -6,12 +6,13 @@
 
 class codigo_auxiliar {
 public:
-    double meanSquareError(double k);
-    void actualizarParametros(std::vector<double> &x, double rate, double epsilon);
-    void guardarParametros();
-    std::vector<double> obtenerParametros();
-    std::vector<double> calcularGradiente(std::string fen, double epsilon);
-    std::vector<double> SGD(int epochs, double learningRate);
+    static double meanSquareError(double k);
+    static void actualizarParametros(std::vector<double> &x, double rate, double epsilon);
+    static void guardarParametros();
+    static std::vector<double> obtenerParametros();
+    static std::vector<double> calcularGradiente(std::string fen, double epsilon);
+    static std::vector<double> SGD(int epochs, double learningRate);
+    static void gradientDescent(int epochs, double learningRate);
 };
 
 #endif //CHESSCPP_CODIGO_AUXILIAR_H

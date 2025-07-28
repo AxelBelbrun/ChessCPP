@@ -7,27 +7,38 @@
 #include "Tablero.h"
 #include "Pieza.h"
 #include "operaciones_bit.h"
-#include "TablaTrans.h"
+#include "Tabla_transposicion.h"
+#include <chrono>
 class Motor {
 public:
     Motor();
     bool tablaInicializada = false;
     int incrementos = 0;
-     TablaTrans* TT;
+    int porcentajeTabla();
+     Tabla_transposicion* TT;
      int hashHits = 0;
     int totalMoves = 0;
     int totalPositions = 0;
     float branchingFactor = 0.0;
-    int ply;
     int nodos = 0;
+    int prioridades[256][256];
+    int cantCapturas[256];
+    int puntajeCaptura[256][256];
+    int ply = -1;
+    int nodosBusqueda;
+    double tiempoDisponible = 0;
+    std::chrono::steady_clock::time_point timeStart;
+    bool stopSearch;
+    int premioPorPeonesPasados;
 
+    u_short bestMove;
     float quiescence(Tablero* tablero, float alfa, float beta);
      float valoracion(Tablero* tablero);
-    static float valoracionMaterial(Tablero* tablero);
+     float valoracionMaterial(Tablero* tablero);
     U64 perft(int profundidad, Tablero* tablero);
-    static float valoracionMovilidad(Tablero* tablero);
-    static float contarMaterialSinPeones(Tablero* tablero);
-     float negamax(Tablero* tablero, int profundidad, float alfa, float beta, u_short &zbestMove);
+     float valoracionMovilidad(Tablero* tablero);
+     float contarMaterialSinPeones(Tablero* tablero);
+     float negamax(Tablero* tablero, int profundidad, float alfa, float beta, bool esRaiz);
      double tiempoGeneracion = 0;
      double tiempoHacer = 0;
      double TiempoDeshacer = 0;
@@ -47,6 +58,13 @@ public:
      static float controlDeCentroPeon(Tablero* tablero, int color);
      static float controlDeCentroAlfil(Tablero* tablero, int color);
      static float controlDeCentro(Tablero* tablero, int color);
+     u_short killerMove[2][128];
+     bool LMR = false;
+
+     //Tabla para chequear la regla de triple repetición
+     U64 tabla_de_repeticiones[512];
+     int index_repeticion = -1;
+     bool esRepeticion(U64 zobristActual);
 
 
 };

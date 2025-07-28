@@ -2,23 +2,23 @@
 // Created by axel on 12/01/24.
 //
 
-#ifndef CHESSCPP_TABLATRANS_H
-#define CHESSCPP_TABLATRANS_H
+#ifndef CHESSCPP_TABLA_TRANSPOSICION_H
+#define CHESSCPP_TABLA_TRANSPOSICION_H
 #include <cstdlib>
 #include <cstdio>
 #include "Tablero.h"
 typedef unsigned long long U64;
 
-class TablaTrans {
+class Tabla_transposicion {
 public:
-    TablaTrans();
+    Tabla_transposicion();
     void asignarTablero(Tablero* tablero);
     void insertar(U64 clave, float valor, int profundidad, int tipo, u_short jugada);
     void limpiarTabla();
 
 
-    U64 index();
-    u_short obtenerMovimientoGuardado();
+    U64 index(U64 clave);
+    u_short obtenerMovimientoGuardado(U64 clave);
     U64  count;
     typedef struct entrada {
         entrada() {
@@ -35,16 +35,16 @@ public:
         u_short jugada = 0;
     };
 
-    entrada obtenerEntrada();
+    entrada obtenerEntrada(U64 clave);
 
 
     Tablero* tablero;
     int tamanoTabla;
-    entrada* tabla[20833333];
+    entrada* tabla[419430];
 
 
 
 };
 
 
-#endif //CHESSCPP_TABLATRANS_H
+#endif //CHESSCPP_TABLA_TRANSPOSICION_H

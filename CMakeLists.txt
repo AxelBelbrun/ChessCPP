@@ -3,8 +3,7 @@ project(chesscpp)
 
 option(BUILD_TESTS "Activar tests?" OFF)
 
-set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
-
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -Wextra")
 file(GLOB SRC_FILES
 	"src/*.cpp"
 )

@@ -48,7 +48,7 @@ void Caballo:: capturas(Tablero* tablero,  std::vector<u_short>* movimientos,U64
         }
     }
 }
-void Caballo:: obtener_movimientos(Tablero* tablero, std::vector<u_short>* movimientos,U64 bitboard_caballos,
+void Caballo:: obtener_movimientos(Tablero* tablero, int ply,U64 bitboard_caballos,
                                            U64 piezasPropias, U64 piezasRivales) {
 
 
@@ -75,16 +75,27 @@ void Caballo:: obtener_movimientos(Tablero* tablero, std::vector<u_short>* movim
                 if ((llegada_bitboard & piezasPropias) > 0) {
                     continue;
 
-                } else if (tablero->esJaque(
-                        this-> generar_movimientos_legales(llegada_bitboard, piezasPropias, piezasRivales, 0),
-                        tablero->_turno)) {
-                    movimientos->push_back(operaciones_bit::crearJugada(casilla, llegada, CHECK));
-                    continue;
-                } else if ((llegada_bitboard & piezasRivales) > 0) {
-                    movimientos->push_back(operaciones_bit::crearJugada(casilla, llegada, CAPTURE));
+                } /*else if (tablero->esJaque(
+                    this-> generar_movimientos_legales(llegada_bitboard, piezasPropias, piezasRivales, tablero->_turno),
+                      tablero->_turno)) {
+                  if ((llegada_bitboard & piezasRivales) > 0) {
+                      tablero->cantMovesGenerados[ply]++;
+                      tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla, llegada, CAPTURECHECK);
+                      }
+                else {
+                      tablero->cantMovesGenerados[ply]++;
+                      tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla, llegada, CHECK);
+                  }
+                  continue;
+
+                }*/
+                else if ((llegada_bitboard & piezasRivales) > 0) {
+                    tablero->cantMovesGenerados[ply]++;
+                    tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla, llegada, CAPTURE);
                     continue;
                 } else {
-                    movimientos->push_back(operaciones_bit::crearJugada(casilla, llegada, QUIET));
+                    tablero->cantMovesGenerados[ply]++;
+                    tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(casilla, llegada, QUIET);
 
                 }
             }

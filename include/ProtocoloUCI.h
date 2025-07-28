@@ -16,10 +16,12 @@ public:
     bool posicionSeteada = false;
     bool ready = false;
     void comunicacionUCI();
+    std::string formatearJugada(u_short jugada);
     void inputSetOption(string inputString);
     void inputUCINewGame();
     void inputPosition(std::string inputString);
-    void inputGo();
+    void inputGo(string input);
+    std:: string generarJugadaString(int salida, int llegada, int llegadaPromocion);
     Tablero* tablero;
     Motor* motor;
 };

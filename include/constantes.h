@@ -10,7 +10,7 @@
 #include <vector>
 
 typedef unsigned long long U64;
-
+typedef uint8_t bitmask;
 
 namespace constantes {
     extern U64 AFile;
@@ -23,6 +23,9 @@ namespace constantes {
     extern U64 fila8;
     extern U64 fila5;
     extern U64 fila4;
+    extern U64 fila3;
+    extern U64 fila6;
+    extern float pesoMovilidad;
     extern float casillasCentralesCaballoBlanco[64];
     extern float casillasCentralesCaballoNegro[64];
     extern float casillasCentralesPeonBlanco[64];
@@ -32,6 +35,7 @@ namespace constantes {
     extern float premioPorEnrocar;
     extern float  castigoPorSacarDama;
     extern float  castigoMultiplesMovimientos;
+    extern int premioPeonPasado[6];
     extern float  castigoPeonBloqueado;
     extern float  premioDesarrolloPiezaMenor;
     extern float  premioEscudoDePeones;
@@ -41,20 +45,14 @@ namespace constantes {
     extern U64 magicsParaTorre[64];
     extern U64 magicsParaAlfil[64];
     extern float valorPieza[12];
-    extern float ocupacionPeonBlanco[64];
-    extern float ocupacionPeonNegro[64];
-    extern float ocupacionCaballoBlanco[64];
-    extern float ocupacionCaballoNegro[64];
-    extern float ocupacionAlfilBlanco[64];
-    extern float ocupacionAlfilNegro[64];
-    extern float ocupacionTorreBlanco[64];
-    extern float ocupacionTorreNegro[64];
-    extern float ocupacionReinaBlanco[64];
-    extern float ocupacionReinaNegro[64];
-    extern float ocupacionReyBlancoMedioJuego[64];
-    extern float ocupacionReyNegroMedioJuego[64];
-    extern float ocupacionReyBlancoFinal[64];
-    extern float ocupacionReyNegroFinal[64];
+    extern std::map<int,int> casillasEspejadas;
+    extern float ocupacionPeon[64];
+    extern float ocupacionCaballo[64];
+    extern float ocupacionAlfil[64];
+    extern float ocupacionTorre[64];
+    extern float ocupacionReina[64];
+    extern float ocupacionReyMedioJuego[64];
+    extern float ocupacionReyFinal[64];
     extern U64 zobristKeys[12][64];
     extern U64 mueveElNegro;
     extern U64 enroqueLargoNegro;

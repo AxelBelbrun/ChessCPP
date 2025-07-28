@@ -9,10 +9,14 @@
 #include "constantes.h"
 #include <cstdio>
 #include "Pieza.h"
+#include <stack>
 
 class Caballo;
 class Rey;
 class Peon;
+class Torre;
+class Alfil;
+class Dama;
 
 enum casillas {
     h1 = 1, g1, f1, e1, d1, c1, b1, a1,
@@ -39,29 +43,81 @@ public:
     void imprimirFen();
     static U64 movimientosDeTorre[64][4096];
    static U64 movimientosDeAlfil[64][512];
-   bool ganoELBlanco();
-   bool ganoElNegro();
+/*   bool ganoELBlanco();
+   bool ganoElNegro();*/
     U64 zobrist;
-    void actualizarZobristKey(u_short jugada, bool haciendoMovimiento);
-   U64 movimientosDePeon[64][2];
+    void actualizarZobristKey(u_short jugada);
+    U64 historialZobrist[512];
+    int contadorZobrist = -1;
+    bool esUnJaque(u_short movimiento);
     U64 movimientosDeCaballo[64];
     U64 movimientosDeRey[64];
+    U64 masksPeonesPasados[80];
+    void calcularMasksPeonesPasados();
     int capturas = 0;
     int ep = 0;
     int check = 0;
     int comunes = 0;
-    bool esJugadaLegal(u_short);
-    std::vector<bool> enroqueCortoNegro;
-    std::vector<bool> enroqueLargoNegro;
-    std::vector<bool> enroqueCortoBlanco;
-    std::vector<bool> enroqueLargoBlanco;
+    bool esCaptura(u_short jugada);
+    std::string formatearJugada(u_short jugada);
+    std:: string generarJugadaString(int salida, int llegada, int llegadaPromocion);
+    struct derechosDeEnroque {
+        bitmask derechosActuales;
+        bitmask derechosAnteriores;
+        int numeroDeMovimiento;
+    };
+
+    int detectarPeonesPasados(int turno);
+    int numeroDeJugadas;
+    std::stack<derechosDeEnroque> enroques;
+    void setearEnroque(int tipoDeEnroque, bool hayDerecho);
+    void guardarEnroque();
+    void deshacerEnroque();
+    bitmask derechosEnroqueAux;
+    bool enroqueCortoBlancas();
+    bool enroqueLargoBlancas();
+    bool enroqueCortoNegras();
+    bool enroqueLargoNegras();
     int _turno;
     void cambiarTurno();
+/*
     std::vector<u_short> _jugadas;
+*/
+    u_short jugadas[512];
+    int contadorJugadas = -1;
     std::vector<U64> bitboards;
+/*
     std::vector<std::vector<U64>> historialPosiciones;
+*/
+    struct modificacionBitboard{
+        modificacionBitboard(){
+            tipoDeBitboard_1 = -1;
+            bitboard_1 = 0;
+            tipoDeBitboard_2 = -1;
+            bitboard_2 = 0;
+            tipoDeBitboard_3 = -1;
+            bitboard_3 = 0;
+        }
+        modificacionBitboard(int tipo1, U64 bitboard1, int tipo2, U64 bitboard2,
+                             int tipo3, U64 bitboard3){
+            tipoDeBitboard_1 = tipo1;
+            bitboard_1 = bitboard1;
+            tipoDeBitboard_2 = tipo2;
+            bitboard_2 = bitboard2;
+            tipoDeBitboard_3 = tipo3;
+            bitboard_3 = bitboard3;
+        }
+        int tipoDeBitboard_1;
+        U64 bitboard_1;
+        int tipoDeBitboard_2;
+        U64 bitboard_2;
+        int tipoDeBitboard_3;
+        U64 bitboard_3;
+    };
+    modificacionBitboard historialBitboards[512];
+    int contadorHistorialBitboards = -1;
+
     void setTurno(int turno);
-    int getTurno();
     bool moverPieza(int salida, int llegada, int tipoDeJugada);
     void deshacerMovimiento();
     U64 piezas_blancas();
@@ -82,8 +138,6 @@ public:
     bool movimientoTempranoDamaBlanca = false;
     bool enrocoBlancas = false;
     bool enrocoNegras = false;
-    void imprimirJugadas();
-    bool seRecapturo();
     bool desarrolloCaballoBlancoB();
     bool desarrolloCaballoBlancoG();
     bool desarrolloCaballoNegroB();
@@ -98,12 +152,29 @@ public:
     void configurarFen(std::string fen);
     float valoracionMaterial(int color);
     float contarMaterialSinPeones(int color);
-    std::vector<float> historialMaterialBlancas;
-    std::vector<float> historialMaterialNegras;
-    std::vector<float> historialOcupacionBlancas;
-    std::vector<float> historialOcupacionNegras;
+    std::vector<int> historialEnPassant;
+    /*std::vector<float> historialMaterialBlancas;
+    std::vector<float> historialMaterialNegras;*/
+    std::pair<int,int> historial_material_negras[50];
+    std::pair<int,int> historial_material_blancas[50];
+    int modif_hist_material_negras = 0;
+    int modif_hist_material_blancas = 0;
+    int contadorMaterialNegras = -1;
+    int contadorMaterialBlancas = -1;
+
+
+
+    /*std::vector<float> historialOcupacionBlancas;
+    std::vector<float> historialOcupacionNegras;*/
+    float historial_ocupacion_negras[512];
+    float historial_ocupacion_blancas[512];
+    int contadorOcupacion = -1;
+/*
     std::vector<U64> historialDePosiciones;
+*/
     bool esTripleRepeticion();
+    void movimientoNulo();
+    void deshacerMovimientoNulo();
     std::pair<int,int> movimientosCaballoBlancoB;
     std::pair<int,int> movimientosCaballoBlancoG;
     std::pair<int,int> movimientosCaballoNegroB;
@@ -112,14 +183,6 @@ public:
     std::pair<int,int> movimientosAlfilBlancoF;
     std::pair<int,int> movimientosAlfilNegroC;
     std::pair<int,int> movimientosAlfilNegroF;
-    int quienMovioPrimero;
-    
-/*    float controlCentroBlancas = 0;
-    float controlCentroNegras = 0;*/
-  /*  float controlDeCentroCaballo(int color);
-    float controlDeCentroPeon(int color);
-    float controlDeCentroAlfil(int color);
-    float controlDeCentro(int color);*/
     float calcularOcupacion( int color);
     float calcularOcupacionPeon(int color);
     float calcularOcupacionCaballo(int color);
@@ -129,18 +192,17 @@ public:
     float calcularOcupacionRey( int color);
     void actualizarOcupacion(u_short jugada);
     int cantPiezas(int color);
-/*
-    void actualizarControlCentro();
-*/
     void actualizarMaterial(u_short jugada);
     void actualizarCantMovesPiezasMenores(u_short jugada, bool haciendoMovimiento);
     void imprimirTablero();
     bool esUnaPromocion(u_short jugada);
     u_short reescribirPromocion(u_short jugada);
+/*
     bool casillaAtacada(int casilla, int turno);
+*/
     bool reyPropioEnJaque(int color);
-    std::vector<u_short> generar_movimientos(int turno);
-    std::vector<u_short> generar_capturas(int turno);
+    void generar_movimientos(int turno, int ply);
+    void generar_capturas(int turno, int ply);
     void promocionar(u_short jugada);
     bool esJaque(U64 jugada, int turno);
     U64 estaClavada(int casillaDePieza);
@@ -149,47 +211,55 @@ public:
     bool esSlidingPiece(int tipoDePieza);
     U64 obtenerAttackMask(int casillaDePieza, int tipoDePieza);
     U64 obtenerAttackMap(int color);
+    U64 attackMapBlancas;
+    U64 attackMapNegras;
+    void actualizarAttackMap();
     U64 obtenerAttackMapBlancas();
     U64 obtenerAttackMapNegras();
     bool chequearEnroqueCorto();
     bool chequearEnroqueLargo();
     bool enrocar(u_short jugada);
+/*
     void moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
+*/
     Caballo* caballo;
     Rey* rey;
     Peon* peon;
+    Torre* torre;
+    Alfil* alfil;
+    Dama* dama;
 
 
 
-private:
 
 
-    void obtener_movimientos_torre_blanca(std::vector <u_short> &movimientos, U64 bitboard);
 
-    void obtener_movimientos_alfil_blanco(std::vector <u_short> &movimientos, U64 bitboard);
+    void obtener_movimientos_torre_blanca(int ply, U64 bitboard);
 
-    void obtener_movimientos_dama_blanca(std::vector<u_short> &movimientos, U64 bitboard);
+    void obtener_movimientos_alfil_blanco(int ply, U64 bitboard);
 
-    std::vector <u_short> &obtener_movimientos_caballo_blanco(std::vector<u_short> &movimientos);
+    void obtener_movimientos_dama_blanca(int ply, U64 bitboard);
 
-    std::vector <u_short> &obtener_movimientos_rey_blanco(std::vector<u_short> &movimientos);
+    void obtener_movimientos_caballo_blanco(int ply);
 
-    std::vector <u_short> &obtener_movimientos_peon_blanco(std::vector<u_short> &movimientos);
+    void obtener_movimientos_rey_blanco(int ply);
 
-    void obtener_movimientos_torre_negra(std::vector<u_short> &movimientos, U64 bitboard);
-    U64 bitboard_movimientos_dama_negra(U64 bitboard);
-    U64 bitboard_movimientos_torre_negra(U64 bitboard);
-    U64 bitboard_movimientos_rey_negro(U64 bitboard);
-    U64 bitboard_movimientos_rey_blanco(U64 bitboard);
-    void obtener_movimientos_alfil_negro(std::vector<u_short> &movimientos, U64 bitboard);
+    void obtener_movimientos_peon_blanco(int ply);
 
-    void obtener_movimientos_dama_negra(std::vector<u_short> &movimientos, U64 bitboard);
+    void obtener_movimientos_torre_negra(int ply, U64 bitboard);
+    U64 bitboard_movimientos_dama_negra( U64 bitboard);
+    U64 bitboard_movimientos_torre_negra( U64 bitboard);
+    U64 bitboard_movimientos_rey_negro( U64 bitboard);
+    U64 bitboard_movimientos_rey_blanco( U64 bitboard);
+    void obtener_movimientos_alfil_negro(int ply, U64 bitboard);
 
-    std::vector <u_short> &obtener_movimientos_caballo_negro(std::vector<u_short> &movimientos);
+    void obtener_movimientos_dama_negra(int ply, U64 bitboard);
 
-    std::vector<u_short> &obtener_movimientos_rey_negro(std::vector<u_short> &movimientos);
+    void obtener_movimientos_caballo_negro(int ply);
 
-    std::vector<u_short> &obtener_movimientos_peon_negro(std::vector<u_short> &movimientos);
+    void obtener_movimientos_rey_negro(int ply);
+
+    void obtener_movimientos_peon_negro(int ply);
 
     U64 bitboard_movimientos_alfil_negro(U64 bitboard);
 
@@ -206,5 +276,27 @@ private:
     U64 bitboard_movimientos_caballo_blanco(U64 bitboard) const;
 
     U64 bitboard_movimientos_peon_blanco(U64 bitboard);
+
+    void setearPosicionInicial(const string &posicionASetear);
+
+    void setearPosicionDeFen(const string &posicionASetear);
+
+    void generarTablasSliding(int i) ;
+
+    void generarTablasNoSliding(int i);
+
+    void generarTablasDeMovimientos();
+
+    void inicializarBitboardsVacios();
+
+
+    void deshacerUltimosRegistros();
+
+    u_short movimientos_generados[256][256];
+
+    int cantMovesGenerados[256];
+
+    int contador_movilidad(int turno);
+
 };
 

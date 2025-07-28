@@ -12,136 +12,153 @@
 #include "constantes.h"
 #include "codigo_auxiliar.h"
 #include <random>
+#include <math.h>
 
 #include <memory>
 
 //Este código fue utilizado para el proceso de optimización de parámetros de la función de evaluación
 
-Tablero* t = new Tablero("position startpos");
-Motor* m = new Motor();
-std::vector<double> velocidades(459, 0.0);
+std::vector<double> velocidades(433, 0.0);
 double velocity = 0.0;
+int contador = 0;
 
-double codigo_auxiliar:: meanSquareError(double k){
-    ifstream file("/home/axel/Documentos/positions.txt");
-    std::vector<string> positions;
-    string line;
-    k = 0.278;
-    while( getline(file, line) ){
+double codigo_auxiliar:: meanSquareError(double k) {
+    std::ifstream file("/home/axel/Documentos/posiciones-ML-Motor.txt");
+    std::vector<std::string> positions;
+    std::string line;
+    while (getline(file, line)) {
         positions.push_back(line);
     }
+    double EPS = 1e-9;
 
-    Motor* m = new Motor();
+    if (positions.empty()) {
+        std::cerr << "Error: No positions found in the file." << std::endl;
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    std::unique_ptr<Motor> m = std::make_unique<Motor>();
     double error = 0.0;
-    Tablero* t = new Tablero("position startpos");
-    for (int i = 0; i < 5000000; i++) {
-        string res = positions[i].substr(positions[i].size()-4,3);
-        double resultado = stof(res);
-        string fen = positions[i].substr(0,positions[i].size()-5);
+    std::unique_ptr<Tablero> t = std::make_unique<Tablero>("position startpos");
+    for (const auto& pos : positions) {
+        std::string res = pos.substr(pos.size() - 4, 3);
+        double resultado = std::stof(res);
+        std::string fen = pos.substr(0, pos.size() - 5);
         t->configurarFen(fen);
 
         double score;
-        if(t->_turno == 0){
-            score = m->quiescence(t, -500000, 500000);
+            m->ply = -1;
+            score = m->quiescence(t.get(), -500000, 500000);
+
+
+        if (score == std::numeric_limits<double>::infinity() || score == -std::numeric_limits<double>::infinity()) {
+            std::cerr << "Error: Invalid score value." << std::endl;
+            continue;
         }
-        else{
-            score = -m->quiescence(t, -500000, 500000);
-        }
 
-        double sigmoid = 1.0/(double) (1+pow(10, -1.13*score/400));
-        error = error + pow(resultado - sigmoid,2);
+        score = score/400; //Evitamos el overflow
 
-
+        double sigmoid = 1.0 / (1 + std::exp(-k * score));
+        error += - (score * std::log(sigmoid + EPS) + (1 - score) * std::log(1 - sigmoid + EPS));
     }
 
-    return error/(double)5000000;
+    return error/positions.size();
 }
 
-void codigo_auxiliar:: actualizarParametros(std::vector<double>& x, double rate, double epsilon){
-    double n = 1;
-
-    for(int i = 1; i < 6; i++){
-        constantes::valorPieza[i] += x[i-1]*epsilon*rate;
-        constantes::valorPieza[i+6] -= x[i-1]*epsilon*rate;
+void codigo_auxiliar:: actualizarParametros(std::vector<double>& gradientes, double rate, double epsilon) {
+    /*for (int i = 1; i < 6; i++) {
+        constantes::valorPieza[i] += gradientes[i - 1] * rate + epsilon;
+        constantes::valorPieza[i + 6] -= gradientes[i - 1] * rate + epsilon;
+    }*/
+    for (int i = 0, j = 0; i < 48; i++, j++) {
+        constantes::ocupacionPeon[j + 8] += gradientes[i] * rate + epsilon;
     }
-
-    for(int i = 5, j = 0; i < 69; i++, j++){
-
-        constantes::ocupacionPeonBlanco[j] += x[i]*epsilon*rate;
+    for (int i = 48, j = 0; i < 112; i++, j++) {
+        constantes::ocupacionCaballo[j] += gradientes[i] * rate + epsilon;
     }
-    for(int i = 69, j = 0; i < 133; i++, j++){
-        constantes::ocupacionCaballoBlanco[j] += x[i]*epsilon*rate;
+    for (int i = 112, j = 0; i < 176; i++, j++) {
+        constantes::ocupacionAlfil[j] += gradientes[i] * rate + epsilon;
     }
-    for(int i = 133, j = 0; i < 197; i++, j++){
-        constantes::ocupacionAlfilBlanco[j] += x[i]*epsilon*rate;
+    for (int i = 176, j = 0; i < 239; i++, j++) {
+        constantes::ocupacionTorre[j] += gradientes[i] * rate + epsilon;
     }
-    for(int i = 197, j = 0; i < 261; i++, j++){
-        constantes::ocupacionTorreBlanco[j] += x[i]*epsilon*rate;
+    for (int i = 239, j = 0; i < 303; i++, j++) {
+        constantes::ocupacionReina[j] += gradientes[i] * rate + epsilon;
     }
-    for(int i = 261, j = 0; i < 325; i++, j++){
-        constantes::ocupacionReinaBlanco[j] += x[i]*epsilon*rate;
+    for (int i = 303, j = 0; i < 368; i++, j++) {
+        constantes::ocupacionReyMedioJuego[j] += gradientes[i] * rate + epsilon;
     }
-    for(int i = 325, j = 0; i < 389; i++, j++){
-        constantes::ocupacionReyBlancoMedioJuego[j] += x[i]*epsilon*rate;
+    for (int i = 368, j = 0; i < 432; i++, j++) {
+        constantes::ocupacionReyFinal[j] += gradientes[i] * rate + epsilon;
     }
-    for(int i = 389, j = 0; i < 453; i++, j++){
-        constantes::ocupacionReyBlancoFinal[j] += x[i]*epsilon*rate;
-    }
-    constantes::premioPorEnrocar += rate * epsilon * x[453];
-    constantes::castigoPorSacarDama += rate * epsilon * x[454];
-    constantes::castigoMultiplesMovimientos += rate * epsilon * x[455];
-    constantes::castigoPeonBloqueado += rate * epsilon * x[456];
-    constantes::premioDesarrolloPiezaMenor += rate * epsilon * x[457];
-    constantes::premioEscudoDePeones += rate * epsilon * x[458];
-    constantes::castigoEnroqueSinEscudo += rate * epsilon * x[459];
-
-
-
+/*
+    constantes::premioPorEnrocar += epsilon + rate * gradientes[432];
+*/
+/*
+    constantes::castigoPorSacarDama += epsilon + rate * gradientes[454];
+*/
+/*
+    constantes::castigoMultiplesMovimientos += epsilon + rate * gradientes[455];
+*/
+/*    constantes::castigoPeonBloqueado += epsilon + rate * gradientes[433];
+    constantes::premioDesarrolloPiezaMenor += epsilon + rate * gradientes[434];
+    constantes::premioEscudoDePeones += epsilon + rate * gradientes[435];
+    constantes::castigoEnroqueSinEscudo += epsilon + rate * gradientes[436];
+    constantes::pesoMovilidad += epsilon + rate * gradientes[437];*/
 }
+
 
 void codigo_auxiliar:: guardarParametros(){
     std::ofstream file;
-    file.open("/home/axel/Documentos/parametros.txt");
+    contador++;
+    file.open("/home/axel/Documentos/parametros/iteracion" + std::to_string(contador) + ".txt");
     file << "Pesos de las piezas: " << std::endl;
-    for(int i = 0; i < 5; i++){
+   /* for(int i = 0; i < 5; i++){
         file << constantes::valorPieza[i+1] << ", " << std::endl;
-    }
+    }*/
     file << "Ocupacion peon blanco: " << std::endl;
 
     for(int i = 5; i < 69; i++){
-        file << constantes::ocupacionPeonBlanco[i-5] << ", " << std::endl;
+
+        file << constantes::ocupacionPeon[i - 5] << ", " << std::endl;
     }
     file << "Ocupacion caballo blanco: " << std::endl;
     for(int i = 69; i < 133; i++){
-        file << constantes::ocupacionCaballoBlanco[i-69] << ", " << std::endl;
+        file << constantes::ocupacionCaballo[i - 69] << ", " << std::endl;
     }
     file << "Ocupacion alfil blanco: " << std::endl;
     for(int i = 133; i < 197; i++) {
-        file << constantes::ocupacionAlfilBlanco[i - 133] << ", " << std::endl;
+        file << constantes::ocupacionAlfil[i - 133] << ", " << std::endl;
     }
     file << "Ocupacion torre blanco: " << std::endl;
     for(int i = 197; i < 261; i++){
-        file << constantes::ocupacionTorreBlanco[i-197] << ", " << std::endl;
+        file << constantes::ocupacionTorre[i - 197] << ", " << std::endl;
     }
     file << "Ocupacion reina blanco: " << std::endl;
     for(int i = 261; i < 325; i++){
-        file << constantes::ocupacionReinaBlanco[i-261] << ", " << std::endl;
+        file << constantes::ocupacionReina[i - 261] << ", " << std::endl;
     }
     file << "Ocupacion rey blanco medio juego: " << std::endl;
     for(int i = 325; i < 389; i++){
-        file << constantes::ocupacionReyBlancoMedioJuego[i-325] << ", " << std::endl;
+        file << constantes::ocupacionReyMedioJuego[i - 325] << ", " << std::endl;
     }
     file << "Ocupacion rey blanco final: " << std::endl;
     for(int i = 389; i < 453; i++){
-        file << constantes::ocupacionReyBlancoFinal[i-389] << ", " << std::endl;
+        file << constantes::ocupacionReyFinal[i - 389] << ", " << std::endl;
     }
+/*
     file << "Premio por enrocar: " << constantes::premioPorEnrocar << std::endl;
+*/
+/*
     file << "Castigo por sacar dama: " << constantes::castigoPorSacarDama << std::endl;
+*/
+/*
     file << "Castigo por multiples movimientos: " << constantes::castigoMultiplesMovimientos << std::endl;
-    file << "Castigo por peon bloqueado: " << constantes::castigoPeonBloqueado << std::endl;
+*/
+/*    file << "Castigo por peon bloqueado: " << constantes::castigoPeonBloqueado << std::endl;
     file << "Premio desarrollo pieza menor: " << constantes::premioDesarrolloPiezaMenor << std::endl;
     file << "Premio escudo de peones: " << constantes::premioEscudoDePeones << std::endl;
     file << "Castigo enroque sin escudo: " << constantes::castigoEnroqueSinEscudo << std::endl;
+    file << "Peso movilidad: " << constantes::pesoMovilidad << std::endl;*/
 
 
     file.close();
@@ -149,71 +166,87 @@ void codigo_auxiliar:: guardarParametros(){
 
 std::vector<double> codigo_auxiliar:: obtenerParametros(){
     std:vector<double> parametros;
-    for(int i = 1; i < 6; i++){
+    /*for(int i = 1; i < 6; i++){
         parametros.push_back(constantes::valorPieza[i]);
-    }
+    }*/
     for(int i = 5; i < 69; i++){
-        parametros.push_back(constantes::ocupacionPeonBlanco[i-5]);
+        if(5 <= i && i <= 12){
+            continue;
+        }
+        if(61 <= i && i <= 68){
+            continue;
+        }
+
+        parametros.push_back(constantes::ocupacionPeon[i - 5]);
     }
     for(int i = 69; i < 133; i++){
-        parametros.push_back(constantes::ocupacionCaballoBlanco[i-69]);
+        parametros.push_back(constantes::ocupacionCaballo[i - 69]);
     }
     for(int i = 133; i < 197; i++){
-        parametros.push_back(constantes::ocupacionAlfilBlanco[i-133]);
+        parametros.push_back(constantes::ocupacionAlfil[i - 133]);
     }
     for(int i = 197; i < 261; i++){
-        parametros.push_back(constantes::ocupacionTorreBlanco[i-197]);
+        parametros.push_back(constantes::ocupacionTorre[i - 197]);
     }
     for(int i = 261; i < 325; i++){
-        parametros.push_back(constantes::ocupacionReinaBlanco[i-261]);
+        parametros.push_back(constantes::ocupacionReina[i - 261]);
     }
     for(int i = 325; i < 389; i++){
-        parametros.push_back(constantes::ocupacionReyBlancoMedioJuego[i-325]);
+        parametros.push_back(constantes::ocupacionReyMedioJuego[i - 325]);
     }
     for(int i = 389; i < 453; i++){
-        parametros.push_back(constantes::ocupacionReyBlancoFinal[i-389]);
+        parametros.push_back(constantes::ocupacionReyFinal[i - 389]);
     }
+/*
     parametros.push_back(constantes::premioPorEnrocar);
+*/
+/*
     parametros.push_back(constantes::castigoPorSacarDama);
+*/
+/*
     parametros.push_back(constantes::castigoMultiplesMovimientos);
-    parametros.push_back(constantes::castigoPeonBloqueado);
+*/
+    /*parametros.push_back(constantes::castigoPeonBloqueado);
     parametros.push_back(constantes::premioDesarrolloPiezaMenor);
     parametros.push_back(constantes::premioEscudoDePeones);
     parametros.push_back(constantes::castigoEnroqueSinEscudo);
+    parametros.push_back(constantes::pesoMovilidad);*/
 
 
     return parametros;
 }
 std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double epsilon) {
+/*
     t->configurarFen(fen);
+*/
     std::vector<double> gradiente;
     std::vector<double> parametros = obtenerParametros();
     int k;
-    if(t->_turno == 0){
+   /* if(t->_turno == 0){
         k = 1;
-    }
-    else{
+    }*/
+/*    else{
         k = -1;
-    }
+    }*/
     for (int i = 0; i < parametros.size(); i++) {
 
         if (i < 5) {
             constantes::valorPieza[i + 1] += epsilon;
             constantes::valorPieza[i + 7] -= epsilon;
         } else if (i < 69 && i >= 5) {
-            constantes::ocupacionPeonBlanco[i - 5] += epsilon;
+            constantes::ocupacionPeon[i - 5] += epsilon;
         } else if (i < 133 && i >= 69) {
-            constantes::ocupacionCaballoBlanco[i - 69] += epsilon;
+            constantes::ocupacionCaballo[i - 69] += epsilon;
         } else if (i < 197 && i >= 133) {
-            constantes::ocupacionAlfilBlanco[i - 133] += epsilon;
+            constantes::ocupacionAlfil[i - 133] += epsilon;
         } else if (i < 261 && i >= 197) {
-            constantes::ocupacionTorreBlanco[i - 197] += epsilon;
+            constantes::ocupacionTorre[i - 197] += epsilon;
         } else if (i < 325 && i >= 261) {
-            constantes::ocupacionReinaBlanco[i - 261] += epsilon;
+            constantes::ocupacionReina[i - 261] += epsilon;
         } else if (i < 389 && i >= 325) {
-            constantes::ocupacionReyBlancoMedioJuego[i - 325] += epsilon;
+            constantes::ocupacionReyMedioJuego[i - 325] += epsilon;
         } else if (i < 453 && i >= 389) {
-            constantes::ocupacionReyBlancoFinal[i - 389] += epsilon;
+            constantes::ocupacionReyFinal[i - 389] += epsilon;
         } /*else if (i == 453) {
                 constantes::premioPorEnrocar += epsilon;
             } else if (i == 454) {
@@ -230,26 +263,28 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
                 constantes::castigoEnroqueSinEscudo += epsilon;
             }*/
 
+/*
         double val1 = k * m->quiescence(t, -500000, 500000);
+*/
 
 
         if (i < 5) {
             constantes::valorPieza[i + 1] -= 2 * epsilon;
             constantes::valorPieza[i + 7] += 2 * epsilon;
         } else if (i < 69 && i >= 5) {
-            constantes::ocupacionPeonBlanco[i - 5] -= 2 * epsilon;
+            constantes::ocupacionPeon[i - 5] -= 2 * epsilon;
         } else if (i < 133 && i >= 69) {
-            constantes::ocupacionCaballoBlanco[i - 69] -= 2 * epsilon;
+            constantes::ocupacionCaballo[i - 69] -= 2 * epsilon;
         } else if (i < 197 && i >= 133) {
-            constantes::ocupacionAlfilBlanco[i - 133] -= 2 * epsilon;
+            constantes::ocupacionAlfil[i - 133] -= 2 * epsilon;
         } else if (i < 261 && i >= 197) {
-            constantes::ocupacionTorreBlanco[i - 197] -= 2 * epsilon;
+            constantes::ocupacionTorre[i - 197] -= 2 * epsilon;
         } else if (i < 325 && i >= 261) {
-            constantes::ocupacionReinaBlanco[i - 261] -= 2 * epsilon;
+            constantes::ocupacionReina[i - 261] -= 2 * epsilon;
         } else if (i < 389 && i >= 325) {
-            constantes::ocupacionReyBlancoMedioJuego[i - 325] -= 2 * epsilon;
+            constantes::ocupacionReyMedioJuego[i - 325] -= 2 * epsilon;
         } else if (i < 453 && i >= 389) {
-            constantes::ocupacionReyBlancoFinal[i - 389] -= 2 * epsilon;
+            constantes::ocupacionReyFinal[i - 389] -= 2 * epsilon;
         } /*else if (i == 453) {
                 constantes::premioPorEnrocar -= 2 * epsilon;
             } else if (i == 454) {
@@ -266,33 +301,35 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
                 constantes::castigoEnroqueSinEscudo -= 2 * epsilon;
             }*/
 
-        double val2 = k * m->quiescence(t, -500000, 500000);
-        double v = (val2 - val1) / (epsilon * 2);
+  /*      double val2 = k * m->quiescence(t, -500000, 500000);
+        double v = (val2 - val1) / (epsilon * 2);*/
+/*
         gradiente.push_back(v);
+*/
         if (i < 5) {
             constantes::valorPieza[i + 1] += epsilon;
             constantes::valorPieza[i + 7] -= epsilon;
         } else if (i < 69 && i >= 5) {
-            constantes::ocupacionPeonBlanco[i - 5] += epsilon;
+            constantes::ocupacionPeon[i - 5] += epsilon;
         } else if (i < 133 && i >= 69) {
-            constantes::ocupacionCaballoBlanco[i - 69] += epsilon;
+            constantes::ocupacionCaballo[i - 69] += epsilon;
         } else if (i < 197 && i >= 133) {
-            constantes::ocupacionAlfilBlanco[i - 133] += epsilon;
+            constantes::ocupacionAlfil[i - 133] += epsilon;
         } else if (i < 261 && i >= 197) {
-            constantes::ocupacionTorreBlanco[i - 197] += epsilon;
+            constantes::ocupacionTorre[i - 197] += epsilon;
         } else if (i < 325 && i >= 261) {
-            constantes::ocupacionReinaBlanco[i - 261] += epsilon;
+            constantes::ocupacionReina[i - 261] += epsilon;
         } else if (i < 389 && i >= 325) {
-            constantes::ocupacionReyBlancoMedioJuego[i - 325] += epsilon;
+            constantes::ocupacionReyMedioJuego[i - 325] += epsilon;
         } else if (i < 453 && i >= 389) {
-            constantes::ocupacionReyBlancoFinal[i - 389] += epsilon;
-        } /*else if (i == 453) {
+            constantes::ocupacionReyFinal[i - 389] += epsilon;
+        } else if (i == 453) {
             constantes::premioPorEnrocar += epsilon;
-        } else if (i == 454) {
+        }/* else if (i == 454) {
             constantes::castigoPorSacarDama += epsilon;
         } else if (i == 455) {
             constantes::castigoMultiplesMovimientos += epsilon;
-        } else if (i == 456) {
+        } */else if (i == 456) {
             constantes::castigoPeonBloqueado += epsilon;
         } else if (i == 457) {
             constantes::premioDesarrolloPiezaMenor += epsilon;
@@ -300,62 +337,113 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
             constantes::premioEscudoDePeones += epsilon;
         } else if (i == 459) {
             constantes::castigoEnroqueSinEscudo += epsilon;
-        }*/
+        }
     }
 
 
     return gradiente;
 }
 
-std::vector<double> codigo_auxiliar:: SGD(int epochs, double learningRate){
-    ifstream file("/home/axel/Documentos/positions.txt");
-    std::vector<string> positions;
-    string line;
-    while( getline(file, line) ){
+std::vector<double> codigo_auxiliar::SGD(int epochs, double learningRate) {
+    std::ifstream file("/home/axel/Documentos/posiciones-ML-Motor.txt");
+    std::vector<std::string> positions;
+    std::string line;
+    while (getline(file, line)) {
         positions.push_back(line);
     }
-    Tablero* t = new Tablero("position startpos");
 
-    std::vector<double> parametros =  obtenerParametros();
-    double l1_rate = 0.1;
-    vector<double> gradientes(460, 0.0);
-    for(int d = 0; d < 100000 ; d++) {
+/*    if (positions.empty()) {
+        std::cerr << "Error: No positions found in the file." << std::endl;
+        return std::vector<double>(432, std::numeric_limits<double>::quiet_NaN());
+    }*/
+    Motor* m = new Motor();
 
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(0, positions.size() - 1);
-        std::uniform_int_distribution<> dis2(1,6);
+    std::vector<double> gradientes(432, 0.0);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, positions.size() - 1);
+    std::uniform_real_distribution<> dis2(-1,1);
 
+
+    std::vector<double> variacionesRandom(432);
+    float variacion = 0.1;
+    for (int i = 0; i < 432; i++) {
+        variacionesRandom[i] = variacion;
+    }
+    double epsilon = 0; // Adjust epsilon value as needed
+    double acumulado = 0.0;
+    for (int d = 0; d < epochs; d++) {
         int x = dis(gen);
-        string fen = positions[x].substr(0, positions[x].size() - 5);
-        std::vector<double> variacionesRandom;
-        for (int i = 0; i < 460; i++) {
-            double t = dis2(gen);
-            variacionesRandom.push_back(t);
-        }
-        actualizarParametros(variacionesRandom, 1, 1);
-        t->configurarFen(fen);
-        int k;
-        if(t->_turno == 0){
-            k = 1;
-        }
-        else{
-            k = -1;
-        }
-        double quiesPositivo = k*m->quiescence(t, -50000, 50000);
-        actualizarParametros(variacionesRandom, 1, -2*1);
-        t->configurarFen(fen);
-        double quiesNegativo = k*m->quiescence(t, -50000, 50000);
-        for (int i = 0; i < 460; i++) {
-            gradientes[i] += (quiesPositivo - quiesNegativo) / (2 * variacionesRandom[i]);
+
+        std::string fen = positions[x].substr(0, positions[x].size() - 5);
+        std::string res = positions[x].substr(positions[x].size() - 4, 3);
+        double score = std::stof(res);
+        Tablero t = Tablero("position fen " + fen);
+        int k = (t._turno == 0) ? 1 : -1;
+        m->ply = -1;
+
+        double scorePropio = m->quiescence(&t, -5000000, 5000000);
+        scorePropio = 1.0 / (1 + std::exp(-k * scorePropio)); //Pasamos el score por la sigmoide
+        for (int i = 0; i < 432; i++) {
+                int casillaActual;
+                if ( i < 48){
+                    casillaActual = i + 8;
+                }
+                else {
+                    casillaActual = (((i + 16) % 64));
+                }
+                int tipoDePieza = t.obtenerTipoDePieza(casillaActual + 1);
+
+                int hayPieza;
+                if(tipoDePieza != VACIO){
+                    hayPieza = 1;
+                }
+                else{
+                    hayPieza = 0;
+                }
+
+                //Chequear si tenemos una pieza negra, en ese caso hay que espejar la casilla
+                if(hayPieza && (t.piezas_negras() & (1ULL << (casillaActual)))){
+                    casillaActual = operaciones_bit::espejarCasilla(casillaActual+1);
+                    //Hay que encontrar la casilla espejada pero en función de i:
+                    int casillaEnFuncionDei;
+                    if(i < 48) {
+                        casillaEnFuncionDei = (casillaActual);
+                    }
+                    else {casillaEnFuncionDei = i - ((i + 16) % 64) + (casillaActual);}
+                    if (casillaEnFuncionDei >= 0 && casillaEnFuncionDei < gradientes.size()) {
+                        gradientes[casillaEnFuncionDei] += (scorePropio - score)*hayPieza;
+                    } else {
+                        std::cerr << "Error: casillaEnFuncionDei out of bounds: " << casillaEnFuncionDei << std::endl;
+                    }
+
+                    gradientes[casillaEnFuncionDei] += (scorePropio - score) * hayPieza;
+                }
+
+                else {gradientes[i] += (scorePropio - score) * hayPieza;}
 
         }
-        actualizarParametros(variacionesRandom, 1, 1);
+
+
 
     }
-    for(int i = 0; i < 460; i++){
-        gradientes[i] = gradientes[i]/100000;
+
+
+    /*// Clipping de gradientes
+    double clipValue = 1.0;
+    for (int i = 0; i < 432; i++) {
+        if (gradientes[i] > clipValue) {
+            gradientes[i] = clipValue;
+        } else if (gradientes[i] < -clipValue) {
+            gradientes[i] = -clipValue;
+        }
+    }*/
+
+    // Promediar los gradientes
+    for (int i = 0; i < 432; i++) {
+        gradientes[i] /= epochs;
     }
+    delete m;
 
     return gradientes;
 }
