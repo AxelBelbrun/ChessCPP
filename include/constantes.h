@@ -5,12 +5,13 @@
 #ifndef CHESSCPP_CONSTANTES_H
 #define CHESSCPP_CONSTANTES_H
 
+
 #include <map>
 #include <string>
 #include <vector>
-
+#include <cstdint>
 typedef unsigned long long U64;
-typedef uint8_t bitmask;
+typedef u_int8_t bitmask;
 
 namespace constantes {
     extern U64 AFile;
@@ -45,7 +46,7 @@ namespace constantes {
     extern U64 magicsParaTorre[64];
     extern U64 magicsParaAlfil[64];
     extern float valorPieza[12];
-    extern std::map<int,int> casillasEspejadas;
+    extern int casillasEspejadas[64];
     extern float ocupacionPeon[64];
     extern float ocupacionCaballo[64];
     extern float ocupacionAlfil[64];

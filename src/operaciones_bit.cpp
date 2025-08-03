@@ -52,6 +52,6 @@ int operaciones_bit::getTipoDeJugada(u_short movimiento){
 
 int operaciones_bit::espejarCasilla(int casilla){
 
-        return constantes::casillasEspejadas[casilla] - 1;
+        return constantes::casillasEspejadas[casilla-1] - 1;
 
 }

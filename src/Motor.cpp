@@ -24,23 +24,71 @@ bool Motor::endgame = false;
 
 
 float Motor::valoracion(Tablero *tablero) {
-    float evaluacion = 0.0;
+    float evaluacionMedio = 0.0;
+    float evaluacionFinal = 0.0;
+    float fase = calcularFaseDeJuego(tablero);
 
-    // Paso 1: Calcular la diferencia de material
-    float diferenciaMaterial = valoracionMaterial(tablero);
+    float materialDePeones = (tablero->peonesBlancos - tablero->peonesNegros)*constantes::valorPieza[5];
+    float materialDeDamas = (tablero->damasBlancas - tablero->damasNegras)*constantes::valorPieza[1];
+    float materialDeAlfiles = (tablero->alfilesBlancos - tablero->alfilesNegros)*constantes::valorPieza[3];
+    float materialDeCaballos = (tablero->caballosBlancos - tablero->caballosNegros)*constantes::valorPieza[4];
+    float materialDeTorres = (tablero->torresBlancas - tablero->torresNegras)*constantes::valorPieza[2];
 
-    // Paso 2: Comprobar si la diferencia de material es mayor que un cierto umbral
-    if (abs(diferenciaMaterial)*2 > 3000) {
-        // Si la diferencia de material es demasiado grande, devolver inmediatamente una evaluación
-        evaluacion = diferenciaMaterial;
-    } else {
-        // Paso 3: Si la diferencia de material no es mayor que el umbral, continuar con el resto de los criterios de evaluación
-        evaluacion += diferenciaMaterial;
-        evaluacion += calcularOcupacion(tablero, tablero->_turno);
+    float peonesF = materialDePeones*pesoMaterialPeonF;
+    float torresF = materialDeTorres*pesoMaterialTorreF;
+    float damasF = materialDeDamas*pesoMaterialDamaF;
+
+    evaluacionMedio += materialDePeones + materialDeDamas + materialDeAlfiles + materialDeCaballos + materialDeTorres;
+    evaluacionFinal += peonesF + torresF + damasF + materialDeAlfiles + materialDeCaballos;
 
 
-        evaluacion += calcularDesarrollo(tablero, tablero->_turno);
-    }
+    // Peones
+    float ocuPeonBlancoMedioJuego = tablero->ocupacionPiezas[5] * pesoOcupacionPeonM;
+    float ocuPeonNegroMedioJuego = tablero->ocupacionPiezas[11] * pesoOcupacionPeonM;
+    float ocuPeonBlancoFinalJuego = tablero->ocupacionPiezas[5] * pesoOcupacionPeonF;
+    float ocuPeonNegroFinalJuego = tablero->ocupacionPiezas[11] * pesoOcupacionPeonF;
+
+// Caballos
+    float ocuCaballoBlancoMedioJuego = tablero->ocupacionPiezas[4] * pesoOcupacionCaballoM;
+    float ocuCaballoNegroMedioJuego = tablero->ocupacionPiezas[10] * pesoOcupacionCaballoM;
+    float ocuCaballoBlancoFinalJuego = tablero->ocupacionPiezas[4] * pesoOcupacionCaballoF;
+    float ocuCaballoNegroFinalJuego = tablero->ocupacionPiezas[10] * pesoOcupacionCaballoF;
+
+// Alfiles
+    float ocuAlfilBlancoMedioJuego = tablero->ocupacionPiezas[3] * pesoOcupacionAlfilM;
+    float ocuAlfilNegroMedioJuego = tablero->ocupacionPiezas[9] * pesoOcupacionAlfilM;
+    float ocuAlfilBlancoFinalJuego = tablero->ocupacionPiezas[3] * pesoOcupacionAlfilF;
+    float ocuAlfilNegroFinalJuego = tablero->ocupacionPiezas[9] * pesoOcupacionAlfilF;
+
+// Torres
+    float ocuTorreBlancoMedioJuego = tablero->ocupacionPiezas[2] * pesoOcupacionTorreM;
+    float ocuTorreNegroMedioJuego = tablero->ocupacionPiezas[8] * pesoOcupacionTorreM;
+    float ocuTorreBlancoFinalJuego = tablero->ocupacionPiezas[2] * pesoOcupacionTorreF;
+    float ocuTorreNegroFinalJuego = tablero->ocupacionPiezas[8] * pesoOcupacionTorreF;
+
+// Damas
+    float ocuDamaBlancoMedioJuego = tablero->ocupacionPiezas[1] * pesoOcupacionDamaM;
+    float ocuDamaNegroMedioJuego = tablero->ocupacionPiezas[7] * pesoOcupacionDamaM;
+    float ocuDamaBlancoFinalJuego = tablero->ocupacionPiezas[1] * pesoOcupacionDamaF;
+    float ocuDamaNegroFinalJuego = tablero->ocupacionPiezas[7] * pesoOcupacionDamaF;
+
+// Reyes (los valores ya son específicos de fase, no se multiplican por pesoOcupacionReyM/F)
+    float ocuReyBlancoMedioJuego = tablero->ocupacionPiezas[0];
+    float ocuReyNegroMedioJuego = tablero->ocupacionPiezas[6];
+    float ocuReyBlancoFinalJuego = tablero->ocupacionPiezas[12];
+    float ocuReyNegroFinalJuego = tablero->ocupacionPiezas[13];
+
+    evaluacionMedio += ((ocuPeonBlancoMedioJuego + ocuPeonNegroMedioJuego) +
+                       (ocuCaballoBlancoMedioJuego + ocuCaballoNegroMedioJuego) +
+                       (ocuAlfilBlancoMedioJuego + ocuAlfilNegroMedioJuego) +
+                       (ocuTorreBlancoMedioJuego + ocuTorreNegroMedioJuego) +
+                       (ocuDamaBlancoMedioJuego + ocuDamaNegroMedioJuego));
+
+    evaluacionFinal += ((ocuPeonBlancoFinalJuego + ocuPeonNegroFinalJuego) +
+                       (ocuCaballoBlancoFinalJuego + ocuCaballoNegroFinalJuego) +
+                       (ocuAlfilBlancoFinalJuego + ocuAlfilNegroFinalJuego) +
+                       (ocuTorreBlancoFinalJuego + ocuTorreNegroFinalJuego) +
+                       (ocuDamaBlancoFinalJuego + ocuDamaNegroFinalJuego));
 
 /*    //Penalizar el perder el derecho a enrocar para las blancas
     float perdidaEnroqueBlancas = 0;
@@ -81,7 +129,7 @@ float Motor::valoracion(Tablero *tablero) {
         tablero->_turno == 1 ? movimientoTempDamaNegra -= constantes::castigoPorSacarDama : movimientoTempDamaNegra += constantes::castigoPorSacarDama;
     }
     evaluacion += movimientoTempDamaNegra;*/
-    if (tablero->contadorJugadas <= 12) {
+    /*if (tablero->contadorJugadas <= 12) {
         float total = 0;
         //Penalizar multiples movimientos de la misma pieza menor blanca en la apertura
         if (tablero->movimientosAlfilBlancoF.second > 1) {
@@ -115,15 +163,16 @@ float Motor::valoracion(Tablero *tablero) {
         }
 
         tablero->_turno == 0 ? evaluacion += total : evaluacion -= total;
-    }
+    }*/
     //Premiar si las blancas enrocan
 
     float enrocaronLasBlancas = 0;
     if (tablero->enrocoBlancas) {
         enrocaronLasBlancas += constantes::premioPorEnrocar;
     }
+    evaluacionMedio += enrocaronLasBlancas*premioEnroqueM;
+    evaluacionFinal += enrocaronLasBlancas*premioEnroqueF;
 
-    tablero->_turno == 0 ? evaluacion += enrocaronLasBlancas : evaluacion -= enrocaronLasBlancas;
     //Premiar si las negras enrocan
 
     float enrocaronLasNegras = 0;
@@ -131,7 +180,8 @@ float Motor::valoracion(Tablero *tablero) {
         enrocaronLasNegras -= constantes::premioPorEnrocar;
     }
 
-    tablero->_turno == 0 ? evaluacion += enrocaronLasNegras : evaluacion -= enrocaronLasNegras;
+    evaluacionMedio += enrocaronLasNegras*premioEnroqueM;
+    evaluacionFinal += enrocaronLasNegras*premioEnroqueF;
 
 
 
@@ -141,26 +191,27 @@ float Motor::valoracion(Tablero *tablero) {
     //Penalizar si los peones de d y e blancos están bloqueados
     if (tablero->obtenerTipoDePieza(12) == PEON) {
         if (tablero->obtenerTipoDePieza(20) != VACIO) {
-            tablero-> _turno == 0 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
+            evaluacionMedio -= constantes::castigoPeonBloqueado*castigoPeonBloqueadoM;
+            evaluacionFinal -= constantes::castigoPeonBloqueado*castigoPeonBloqueadoF;
         }
     }
 
     if (tablero->obtenerTipoDePieza(13) == PEON) {
         if (tablero->obtenerTipoDePieza(21) != VACIO) {
-            tablero-> _turno == 0 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
-        }
+            evaluacionMedio -= constantes::castigoPeonBloqueado*castigoPeonBloqueadoM;
+            evaluacionFinal -= constantes::castigoPeonBloqueado*castigoPeonBloqueadoF;        }
     }
 
     //Penalizar si los peones de d y e negros están bloqueados
     if (tablero->obtenerTipoDePieza(53) == PEON) {
         if (tablero->obtenerTipoDePieza(45) != VACIO) {
-            tablero-> _turno == 1 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
-        }
+            evaluacionMedio += constantes::castigoPeonBloqueado*castigoPeonBloqueadoM;
+            evaluacionFinal += constantes::castigoPeonBloqueado*castigoPeonBloqueadoF;        }
     }
     if (tablero->obtenerTipoDePieza(52) == PEON) {
         if (tablero->obtenerTipoDePieza(44) != VACIO) {
-            tablero-> _turno == 1 ? evaluacion -= constantes::castigoPeonBloqueado : evaluacion += constantes::castigoPeonBloqueado;
-        }
+            evaluacionMedio += constantes::castigoPeonBloqueado*castigoPeonBloqueadoM;
+            evaluacionFinal += constantes::castigoPeonBloqueado*castigoPeonBloqueadoF;        }
     }
 
 /*    //Evaluacion de movilidad
@@ -171,14 +222,15 @@ float Motor::valoracion(Tablero *tablero) {
 
     //Evaluamos la seguridad del rey
 
-/*    if(!tablero->endgame) {
-        float reysec = 0.7*seguridadDelRey(tablero);
-        evaluacion += reysec;
-    }*/
+        float reysec = 0.5*seguridadDelRey(tablero);
+        evaluacionMedio += reysec*seguridadDelReyM;
+        evaluacionFinal += reysec*seguridadDelReyF;
 
     double cant = tablero->contador_movilidad(tablero->_turno);
 
-    tablero->_turno == 0 ? evaluacion += constantes::pesoMovilidad*cant : evaluacion -= constantes::pesoMovilidad*cant;
+    evaluacionMedio += cant*movilidadM;
+    evaluacionFinal += cant*movilidadF;
+
     //Control del centro
 
 /*
@@ -192,12 +244,16 @@ float Motor::valoracion(Tablero *tablero) {
 /*    if (tablero->_turno == 1) {
         evaluacion = -evaluacion;
     }*/
+    float pesoM = fase;
+    float pesoF = 256 - fase;
 
-    return evaluacion;
+    float evaluacion = (evaluacionMedio*pesoM + evaluacionFinal*pesoF)/256.0;
+
+    return (tablero->_turno == 0) ? evaluacion : -evaluacion;
 }
 
-float Motor::valoracionMaterial(Tablero *tablero) {
-    int valoracionBlancas = tablero->historial_material_blancas[tablero->contadorMaterialBlancas].first;
+/*float Motor::valoracionMaterial(Tablero *tablero) {
+*//*    int valoracionBlancas = tablero->historial_material_blancas[tablero->contadorMaterialBlancas].first;
     int valoracionNegras = tablero->historial_material_negras[tablero->contadorMaterialNegras].first;
     if (!tablero->endgame && ( valoracionBlancas <= 900 &&
     valoracionNegras >= -900)) {
@@ -205,11 +261,11 @@ float Motor::valoracionMaterial(Tablero *tablero) {
     }
     if(!tablero->endgame && (tablero->bitboards[1] == 0) && (tablero->bitboards[7] == 0)){
         tablero->endgame = true;
-    }
-    float valor = valoracionBlancas + valoracionNegras;
+    }*//*
+
 
     return (tablero->_turno == 0) ? valor : -valor;
-}
+}*/
 
 float Motor::valoracionMovilidad(Tablero *tablero) {
     float valor = 0;
@@ -277,45 +333,39 @@ U64 Motor::perft(int depth, Tablero *tablero) {
 
 
 float Motor::seguridadDelRey(Tablero *tablero) {
+
     float valor = 0;
 
 
         if ((tablero->bitboards[0] & (0b1ULL | 0b10ULL)) > 0) {
-            U64 escudoDePeones = tablero->bitboards[5] & (0x100 | 0x200 | 0x400);
-            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
-            valor += constantes::premioEscudoDePeones * cantPeonesEscudo;
-           /* if ((tablero->bitboards[5] & 0x100) > 0) {
-                valor += constantes::premioEscudoDePeones;
-            }
-            if ((tablero->bitboards[5] & 0x200) > 0) {
-                valor += constantes::premioEscudoDePeones;
-            }
-            if ((tablero->bitboards[5] & 0x400) > 0) {
-                valor += constantes::premioEscudoDePeones;
-            }*/
-            /*           if ((tablero->bitboards[4] & 0x40000) > 0){
-                           valor += 20;
-                       }*/
+            U64 escudoDePeonesAUnaCasilla = tablero->bitboards[5] & (0x100 | 0x200 | 0x400);
+            U64 escudoDePeonesADosCasillas = tablero ->bitboards[5] & (0x10000 | 0x20000 | 0x40000);
+            int cantPeonesEscudoUna = __builtin_popcountll(escudoDePeonesAUnaCasilla);
+            int cantPeonesEscudoDos = __builtin_popcountll(escudoDePeonesADosCasillas);
+            valor += constantes::premioEscudoDePeones * cantPeonesEscudoUna;
+            valor += (constantes::premioEscudoDePeones*0.6) * cantPeonesEscudoDos;
         } else if ((tablero->bitboards[0] & 0xe0) > 0) {
 
-            U64 escudoDePeones = tablero->bitboards[5] & (0x2000 | 0x4000 | 0x8000);
-            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
-            valor += constantes::premioEscudoDePeones * cantPeonesEscudo;
-           /*
-            if ((tablero->bitboards[5] & 0x2000) > 0) {
-                valor += constantes::premioEscudoDePeones;
-            }
-            if ((tablero->bitboards[5] & 0x4000) > 0) {
-                valor += constantes::premioEscudoDePeones;
-            }
-            if ((tablero->bitboards[5] & 0x8000) > 0) {
-                valor += constantes::premioEscudoDePeones;
-            }*/
+            U64 escudoDePeonesAUnaCasilla = tablero->bitboards[5] & (0xe000);
+            U64 escudoDePeonesADosCasillas = tablero ->bitboards[5] & (0xe00000);
+            int cantPeonesEscudoUna = __builtin_popcountll(escudoDePeonesAUnaCasilla);
+            int cantPeonesEscudoDos = __builtin_popcountll(escudoDePeonesADosCasillas);
+            valor += constantes::premioEscudoDePeones * cantPeonesEscudoUna;
+            valor += (constantes::premioEscudoDePeones*0.6) * cantPeonesEscudoDos;
+
+            /*
+             if ((tablero->bitboards[5] & 0x2000) > 0) {
+                 valor += constantes::premioEscudoDePeones;
+             }
+             if ((tablero->bitboards[5] & 0x4000) > 0) {
+                 valor += constantes::premioEscudoDePeones;
+             }
+             if ((tablero->bitboards[5] & 0x8000) > 0) {
+                 valor += constantes::premioEscudoDePeones;
+             }*/
             /*           if ((tablero->bitboards[4] & 0x200000) > 0){
                            valor += 20;
                        }*/
-        } else {
-            valor -= constantes::castigoEnroqueSinEscudo;
         }
 
 
@@ -323,9 +373,12 @@ float Motor::seguridadDelRey(Tablero *tablero) {
         //Chequear lo mismo para las negras
         if ((tablero->bitboards[6] & 0x300000000000000ULL) > 0) {
 
-            U64 escudoDePeones = tablero->bitboards[11] & (0x1000000000000ULL | 0x2000000000000ULL | 0x4000000000000ULL);
-            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
-            valor -= constantes::premioEscudoDePeones * cantPeonesEscudo;
+            U64 escudoDePeonesAUnaCasilla = tablero->bitboards[11] & (0x7000000000000);
+            U64 escudoDePeonesADosCasillas = tablero ->bitboards[11] & (0x70000000000);
+            int cantPeonesEscudoUna = __builtin_popcountll(escudoDePeonesAUnaCasilla);
+            int cantPeonesEscudoDos = __builtin_popcountll(escudoDePeonesADosCasillas);
+            valor -= constantes::premioEscudoDePeones * cantPeonesEscudoUna;
+            valor -= (constantes::premioEscudoDePeones*0.6) * cantPeonesEscudoDos;
             /*
             if ((tablero->bitboards[11] & 0x1000000000000ULL) > 0) {
                 valor -= constantes::premioEscudoDePeones;
@@ -341,9 +394,12 @@ float Motor::seguridadDelRey(Tablero *tablero) {
                       }*/
         } else if ((tablero->bitboards[6] & 0xe000000000000000ULL) > 0) {
 
-            U64 escudoDePeones = tablero->bitboards[11] & (0x20000000000000ULL | 0x40000000000000ULL | 0x80000000000000ULL);
-            int cantPeonesEscudo = __builtin_popcountll(escudoDePeones);
-            valor -= constantes::premioEscudoDePeones * cantPeonesEscudo;
+            U64 escudoDePeonesAUnaCasilla = tablero->bitboards[11] & (0xe0000000000000);
+            U64 escudoDePeonesADosCasillas = tablero ->bitboards[11] & (0xe00000000000);
+            int cantPeonesEscudoUna = __builtin_popcountll(escudoDePeonesAUnaCasilla);
+            int cantPeonesEscudoDos = __builtin_popcountll(escudoDePeonesADosCasillas);
+            valor -= constantes::premioEscudoDePeones * cantPeonesEscudoUna;
+            valor -= (constantes::premioEscudoDePeones*0.6) * cantPeonesEscudoDos;
 
 
             /*if ((tablero->bitboards[11] & 0x20000000000000ULL) > 0) {
@@ -358,13 +414,10 @@ float Motor::seguridadDelRey(Tablero *tablero) {
             /*           if ((tablero->bitboards[10] & 0x200000000000ULL) > 0) {
                            valor -= 20;
                        }*/
-        } else {
-            valor += constantes::castigoEnroqueSinEscudo;
         }
 
 
-
-    return tablero->_turno == 0 ? valor : -valor;
+    return valor;
 
 }
 
@@ -533,8 +586,7 @@ float Motor::calcularOcupacionRey(Tablero *tablero, int color) {
 float Motor::calcularOcupacion(Tablero *tablero, int color) {
     float valor = 0;
 
-    valor += tablero->historial_ocupacion_blancas[tablero->contadorOcupacion];
-    valor += tablero->historial_ocupacion_negras[tablero->contadorOcupacion];
+
 
 
     return (color == 0) ? valor : -valor;
@@ -577,6 +629,7 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
         TT->asignarTablero(tablero);
         tablaInicializada = true;
     }
+    misses++;
 
     Tabla_transposicion::entrada e = TT->obtenerEntrada(clave);
     if (e.jugada != 0 && e.profundidad >= profundidad && e.clave == clave && !esRaiz) {
@@ -592,7 +645,7 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
         }
     }
     nodos++;
-    if ((profundidad == 0) || (ply == 255)) {
+    if ((profundidad <= 0) || (ply == 255)) {
         ply--;
         return quiescence(tablero, alfa, beta);
     }
@@ -606,6 +659,7 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
     //Null move pruning
     if (profundidad > 3 && (contarMaterialSinPeones(tablero) > 0) &&
          (valoracion(tablero) > beta) && !(tablero->reyPropioEnJaque(tablero->_turno))) {
+        exitosNull++;
         tablero->movimientoNulo();
         float eval = -negamax(tablero, profundidad - 3, -beta, -beta + 1, false);
         ply--;
@@ -617,143 +671,103 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
             return beta;
         }
     }
+    // C++
 
 
     u_short mejorJugada = 0;
     float maxEval = -50000;
+    float maxEvalSegunda = -98989898;
     tablero->generar_movimientos(tablero->_turno, ply);
 
-
-    U64 zobristPruebaPrioridad1 = tablero->zobrist;
     Tabla_transposicion::entrada entrada = TT->obtenerEntrada(clave);
 
 
+    std::vector<std::pair<u_short, float>> movimientosConPrioridad;
     for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
-        float prioridad = 0;
         u_short movimiento = tablero->movimientos_generados[ply][i];
-        //string jugadaEscrita = tablero->formatearJugada(movimiento);;
-        if (esRaiz && (movimiento == bestMove)) {
-            prioridad = 999999999;
-        } else if ((entrada.jugada == movimiento) && entrada.profundidad >= profundidad && entrada.clave == clave) {
-            prioridad = 9999999;
-            hashHits++;
-
-        } else if (killerMove[0][ply] == movimiento) {
-            if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
-                                    operaciones_bit::getTipoDeJugada(movimiento))) {
-                prioridad = 200;
-                tablero->deshacerMovimiento();
-            }
-
-        } else if (killerMove[1][ply] == movimiento) {
-            if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
-                                    operaciones_bit::getTipoDeJugada(movimiento))) {
-                prioridad = 200;
-                tablero->deshacerMovimiento();
-            }
-        } else {
-            //Ordenamos capturas según el valor de la pieza capturada - pieza que captura
-
-            if (tablero->esCaptura(movimiento)) {
-                prioridad = (abs(constantes::valorPieza[tablero->obtenerTipoDePieza(
-                        operaciones_bit::getLlegada(movimiento))]) -
-                             abs(constantes::valorPieza[tablero->obtenerTipoDePieza(
-                                     operaciones_bit::getSalida(movimiento))]));
-            }
-
-            if (tablero->esUnaPromocion(movimiento)) {
-                prioridad += 180;
-            }
-
-            if (tablero->esUnJaque(movimiento)) {
-                prioridad += 180;
-            }
-
-            prioridad += operaciones_bit::getTipoDeJugada(movimiento);
+        float prioridad = 0;
+        if (esRaiz && (movimiento == bestMove)) prioridad = 2000000; // Prioridad máxima para bestMove
+        else if (entrada.jugada == movimiento) prioridad = 1000000;
+        else if (killerMove[0][ply] == movimiento || killerMove[1][ply] == movimiento) prioridad = 900000;
+        else if (tablero->esCaptura(movimiento)) {
+            int victima = tablero->obtenerTipoDePieza(operaciones_bit::getLlegada(movimiento));
+            int atacante = tablero->obtenerTipoDePieza(operaciones_bit::getSalida(movimiento));
+            prioridad = 800000 + 100 * constantes::valorPieza[victima] - constantes::valorPieza[atacante];
         }
-        prioridades[ply][i] = prioridad;
-
-
+        else if (tablero->esUnaPromocion(movimiento)) prioridad = 700000;
+        else prioridad = operaciones_bit::getTipoDeJugada(movimiento);
+        movimientosConPrioridad.emplace_back(movimiento, prioridad);
     }
-
-
-
-
-/*
-    sort(movimientosConPrioridad.begin(), movimientosConPrioridad.end(),
-         [](const pair<u_short, float> &a, const pair<u_short, float> &b) {
-             return a.second > b.second;
-         });
-*/
+    std::sort(movimientosConPrioridad.begin(), movimientosConPrioridad.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
     int cantidadDeMovesBuscados = 0;
-
-
-    for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
-        int maxIndex = 0;
-        for (int j = 0; j <= tablero->cantMovesGenerados[ply]; j++) {
-            if (prioridades[ply][j] >= prioridades[ply][maxIndex]) {
-                maxIndex = j;
-            }
+    for (const auto& [movimiento, prioridad] : movimientosConPrioridad) {
+        // Futility pruning: solo en profundidad 1, no jaque/captura/promoción
+        if (profundidad == 1 &&
+            !tablero->esCaptura(movimiento) &&
+            !tablero->esUnaPromocion(movimiento) &&
+            !tablero->esUnJaque(movimiento)) {
+            float evalEstatico = valoracion(tablero);
+            // Si el valor estático + margen no supera alfa, podar
+            if (evalEstatico + 150 <= alfa) continue;
         }
-        u_short movimiento = tablero->movimientos_generados[ply][maxIndex];
-        prioridades[ply][maxIndex] = -1000000000;
-
         if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
                                 operaciones_bit::getTipoDeJugada(movimiento))) {
             float eval;
+            // LMR: reducir profundidad en jugadas poco prometedoras
+            bool esCaptura = tablero->esCaptura(movimiento);
+            bool esPromocion = tablero->esUnaPromocion(movimiento);
+            bool esKiller = (killerMove[0][ply] == movimiento || killerMove[1][ply] == movimiento);
+            bool esJaque = tablero->esUnJaque(movimiento);
 
-            if (!LMR && (cantidadDeMovesBuscados >= 2) && (profundidad > 2) &&
-            !tablero->esUnJaque(movimiento)
-            && !tablero->esCaptura(movimiento) &&
-                    (movimiento != killerMove[0][ply]) && (movimiento != killerMove[1][ply]) &&
-                !tablero->reyPropioEnJaque(tablero->_turno)) {
-                LMR = true;
+            if (!esCaptura && !esPromocion && !esKiller && !esJaque && cantidadDeMovesBuscados > 2 && profundidad > 2) {
                 eval = -negamax(tablero, profundidad - 2, -alfa - 1, -alfa, false);
-
                 ply--;
                 index_repeticion--;
-
-                LMR = false;
-                if ((eval < alfa)) {
+                if (eval < alfa) {
                     tablero->deshacerMovimiento();
+                    cantidadDeMovesBuscados++;
                     continue;
                 }
             }
 
-
             eval = -negamax(tablero, profundidad - 1, -beta, -alfa, false);
-            cantidadDeMovesBuscados++;
             ply--;
             index_repeticion--;
-
             tablero->deshacerMovimiento();
             if (stopSearch) {
                 tablero->cantMovesGenerados[ply] = -1;
                 return 0;
-            }
+                }
+            cantidadDeMovesBuscados++;
 
             if (eval > maxEval) {
-                if(esRaiz && !stopSearch){
+                if (esRaiz && !stopSearch) {
                     bestMove = movimiento;
+                    maxEvalSegunda = maxEval;
+
+
                 }
                 maxEval = eval;
+
                 mejorJugada = movimiento;
-               /* if (esRaiz) {
-                    cout << "Hasta ahora la mejor jugada es:" << tablero->formatearJugada(mejorJugada) << endl;
-                }*/
+            }
+            else if ((eval > maxEvalSegunda) && (eval < maxEval) && esRaiz) {
+                if (esRaiz && !stopSearch) {
+                    maxEvalSegunda = eval; // Actualiza si es la segunda mejor
+                }
             }
             alfa = std::max(alfa, eval);
             if (alfa >= beta) {
-                //Killer move
-                u_short killer = movimiento;
-                if (operaciones_bit::getTipoDeJugada(killer) == QUIET) {
+                // Killer move
+                if (operaciones_bit::getTipoDeJugada(movimiento) == QUIET) {
                     killerMove[1][ply] = killerMove[0][ply];
-                    killerMove[0][ply] = killer;
+                    killerMove[0][ply] = movimiento;
                 }
+                TT->insertar(clave, maxEval, profundidad, 2, movimiento);
                 break;
             }
         }
-
     }
 
     tablero->cantMovesGenerados[ply] = -1;
@@ -773,6 +787,7 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
     }*/
     if (esRaiz && (mejorJugada != 0)) {
         bestMove = mejorJugada;
+        maxEval2 = maxEvalSegunda;
     }
     int tipoEntrada = 0;
     if (maxEval <= alfa) {
@@ -787,12 +802,13 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
 }
 
 bool Motor::esRepeticion(U64 zobristActual) {
+    int repeticiones = 0;
     for (int i = 0; i < index_repeticion; i++) {
         if (tabla_de_repeticiones[i] == zobristActual) {
-            return true;
+            repeticiones++;
         }
     }
-    return false;
+    return repeticiones >= 3;
 }
 
 float Motor::quiescence(Tablero *tablero, float alfa, float beta) {
@@ -914,3 +930,16 @@ int Motor::porcentajeTabla() {
     return TT->count;
 }
 
+int Motor::calcularFaseDeJuego(Tablero* tablero) {
+    int faseActual = 0;
+    faseActual += (tablero->caballosBlancos + tablero->caballosNegros) * peso_fase_caballo;
+    faseActual += (tablero->alfilesBlancos + tablero->alfilesNegros) * peso_fase_alfil;
+    faseActual += (tablero->damasBlancas + tablero->damasNegras) * peso_fase_dama;
+    faseActual += (tablero->torresBlancas + tablero->torresNegras) * peso_fase_torre;
+
+    faseActual = std::min(faseActual, fase_maxima_total);
+    faseActual = std::max(faseActual, 0);
+
+    return (faseActual * 256 + (fase_maxima_total / 2)) / fase_maxima_total;
+
+}

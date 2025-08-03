@@ -179,7 +179,9 @@ void ProtocoloUCI:: inputPosition(string input) {
             u_short move = tablero->movimientos_generados[0][j];
             if(jugada == formatearJugada(move)){
                 tablero->moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move), operaciones_bit::getTipoDeJugada(move));
+/*
                 motor->TT->limpiarTabla();
+*/
 /*
                 tablero->imprimirTablero();
 */
@@ -253,6 +255,10 @@ void ProtocoloUCI:: inputGo(string input) {
     long long tiempo = (tablero->_turno == 0) ? wt : bt;
     long long incremento = (tablero->_turno == 0) ? winc : binc;
 
+    if(incremento > 0 && (tiempo <= 5000)){
+        tiempo = (incremento*75)/100;
+    }
+
     // Heurística de gestión del tiempo (20 jugadas restantes como estimación)
     motor->tiempoDisponible = tiempo / 20 + incremento / 2;
 
@@ -261,24 +267,65 @@ void ProtocoloUCI:: inputGo(string input) {
     motor->stopSearch = false;
 
     int i = 1;
-    while (i < 40) {
+    u_short mejorJugadaTemporal;
+    int plySeguidosComoMejorJugada = 0;
+
+    while (i < 10) {
         if (i == 1) {
             motor->bestMove = 0;
+
         }
+
 
         motor->ply = -1;
         motor->nodosBusqueda = 0;
         motor->incrementos = 0;
         motor->nodos = 0;
 
-        motor->negamax(tablero, i, -999999999, 999999999, true);
+
+        float eval = motor->negamax(tablero, i, -999999999, 999999999, true);
+
+        bool romper = false;
+        bool esFinal = (4*tablero->damasBlancas + 4*tablero->damasNegras +
+                        2*tablero->torresBlancas + 2*tablero->torresNegras +
+                        tablero->caballosBlancos + tablero->caballosNegros +
+                        tablero->alfilesBlancos + tablero->alfilesNegros) <= 6 ? true : false;
+
+        int plySegunEtapa;
+        esFinal ? plySegunEtapa = 5 : plySegunEtapa = 10;
+        if( i >= 5 && !esFinal) {
+            if (tablero->formatearJugada(mejorJugadaTemporal) == tablero->formatearJugada(motor->bestMove)) {
+                plySeguidosComoMejorJugada++;
+            }
+            else {
+                plySeguidosComoMejorJugada = 0;
+            }
+            if ((plySeguidosComoMejorJugada == plySegunEtapa) && (eval - motor->maxEval2 >= 100)) {
+                romper = true;
+            }
+        }
+        cout << "Nodos en profundidad " << i << ": " << motor->nodos << endl;
+        if (romper) {
+            break;
+        }
+        mejorJugadaTemporal = motor->bestMove;
+
+
+
+
+
+/*
+        cout << "Porcentaje de hits:" << (motor->hashHits*100)/(motor->misses) << endl;
+*/
+/*        motor->hashHits = 0;
+        motor->misses = 0;*/
 
         // Verificar si se agotó el tiempo
         auto now = chrono::steady_clock::now();
         long long tiempoTranscurrido = chrono::duration_cast<chrono::milliseconds>(now - motor->timeStart).count();
-        std::cout << "Profundidad: " << i
+/*        std::cout << "Profundidad: " << i
                   << ", Tiempo transcurrido: " << tiempoTranscurrido
-                  << " / " << motor->tiempoDisponible << " ms" << std::endl;
+                  << " / " << motor->tiempoDisponible << " ms" << std::endl;*/
 
         if (tiempoTranscurrido >= motor->tiempoDisponible) {
             break;
@@ -288,18 +335,10 @@ void ProtocoloUCI:: inputGo(string input) {
         prof = i;
     }
 
-/*
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
-*/
-
-    /*//Tiempo en segundos
-    cout << "Tiempo de busqueda: " << chrono::duration_cast<chrono::seconds>(end - motor->timeStart).count() << "s" << endl;
-
-    cout << "Cantidad de nodos buscados: " << motor-> nodos << endl;*/
 
 
-
-
+    cout << motor -> exitosNull << endl;
 
     string jugadaString;
     int salida, llegada;
@@ -361,11 +400,13 @@ void ProtocoloUCI:: inputGo(string input) {
 */
     cout << "bestmove " << jugadaString << endl;
     cout << "profundidad alcanzada: " << prof << endl;
-   // cout << "cantidad de nodos buscados: " << motor->nodos << endl;
+   cout << "cantidad de nodos buscados: " << motor->nodos << endl;
     /*cout << "cantidad de hits: " << motor->hashHits << endl;*/
     //cout << "Porcentaje de tabla de transposicion llena:" <<
          //motor->porcentajeTabla() << endl;
+/*
     motor->TT->limpiarTabla();
+*/
     motor->index_repeticion = tablero->contadorJugadas;
     U64 claveActual = tablero->zobrist;
     motor->tabla_de_repeticiones[motor->index_repeticion] = claveActual;

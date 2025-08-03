@@ -30,9 +30,7 @@ int CABALLO_NEGRO = CABALLO + 6;
 Tablero::Tablero(std::string posicionASetear) {
     generarTablasDeMovimientos();
     zobrist = 0;
-    for (int i = 0; i < 256; i++) {
-        cantMovesGenerados[i] = -1;
-    }
+    inicializarContadoresDeMovimientos();
     calcularMasksPeonesPasados();
     contadorZobrist = -1;
 
@@ -68,6 +66,11 @@ Tablero::generarTablasDeMovimientos() {//Se generan las tablas de movimientos po
     }
 }
 
+void Tablero::inicializarContadoresDeMovimientos() {
+    for (int i = 0; i < 256; i++) {
+        cantMovesGenerados[i] = -1;
+    }
+}
 
 //Genera el bitboard de movimientos posibles para cada pieza no sliding en la casilla i
 void Tablero::generarTablasNoSliding(
@@ -141,27 +144,32 @@ void Tablero::setearPosicionDeFen(const string &posicionASetear) {//Inicializar 
 
                 case 'Q':
                     bitboards[1] = operaciones_bit::setBit(bitboards[1], casillaActual, 1);
+                    damasBlancas++;
                     casillaActual--;
                     break;
 
                 case 'R':
                     bitboards[2] = operaciones_bit::setBit(bitboards[2], casillaActual, 1);
                     casillaActual--;
+                    torresBlancas++;
                     break;
 
                 case 'B':
                     bitboards[3] = operaciones_bit::setBit(bitboards[3], casillaActual, 1);
                     casillaActual--;
+                    alfilesBlancos++;
                     break;
 
                 case 'N':
                     bitboards[4] = operaciones_bit::setBit(bitboards[4], casillaActual, 1);
                     casillaActual--;
+                    caballosBlancos++;
                     break;
 
                 case 'P':
                     bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaActual, 1);
                     casillaActual--;
+                    peonesBlancos++;
                     break;
 
 
@@ -173,26 +181,31 @@ void Tablero::setearPosicionDeFen(const string &posicionASetear) {//Inicializar 
                 case 'q':
                     bitboards[7] = operaciones_bit::setBit(bitboards[7], casillaActual, 1);
                     casillaActual--;
+                    damasNegras++;
                     break;
 
                 case 'r':
                     bitboards[8] = operaciones_bit::setBit(bitboards[8], casillaActual, 1);
                     casillaActual--;
+                    torresNegras++;
                     break;
 
                 case 'b':
                     bitboards[9] = operaciones_bit::setBit(bitboards[9], casillaActual, 1);
                     casillaActual--;
+                    alfilesNegros++;
                     break;
 
                 case 'n':
                     bitboards[10] = operaciones_bit::setBit(bitboards[10], casillaActual, 1);
                     casillaActual--;
+                    caballosNegros++;
                     break;
 
                 case 'p':
                     bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaActual, 1);
                     casillaActual--;
+                    peonesNegros++;
                     break;
 
                 case '/':
@@ -264,14 +277,12 @@ void Tablero::setearPosicionDeFen(const string &posicionASetear) {//Inicializar 
     historialZobrist[contadorZobrist] = zobrist;
 
     //Se calcula el valor del material y se agrega al historial
-    contadorMaterialBlancas = 0;
+/*    contadorMaterialBlancas = 0;
     historial_material_blancas[contadorMaterialBlancas] = std::make_pair(valoracionMaterial(0), 0);
     contadorMaterialNegras = 0;
-    historial_material_negras[contadorMaterialNegras] = std::make_pair(valoracionMaterial(1), 0);
+    historial_material_negras[contadorMaterialNegras] = std::make_pair(valoracionMaterial(1), 0);*/
 
-    contadorOcupacion = 0;
-    historial_ocupacion_blancas[contadorOcupacion] = calcularOcupacion(0);
-    historial_ocupacion_negras[contadorOcupacion] = calcularOcupacion(1);
+    calcularOcupacion();
 
     if (historialEnPassant.empty()) {
         historialEnPassant.push_back(-1);
@@ -320,20 +331,28 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
     }
     bitboards.push_back(peonesNegrosAlInicio);
 
+    torresNegras = 2;
+    torresBlancas = 2;
+    alfilesNegros = 2;
+    alfilesBlancos = 2;
+    caballosNegros = 2;
+    caballosBlancos = 2;
+    damasNegras = 1;
+    damasBlancas = 1;
+    peonesNegros = 8;
+    peonesBlancos = 8;
 
     //El valor del material desde la posición inicial del ajedrez es siempre el mismo,
     //asi que en vez de "calcularlo" directamente lo asignamos
-    contadorMaterialBlancas = 0;
+/*    contadorMaterialBlancas = 0;
     historial_material_blancas[contadorMaterialBlancas] = std::make_pair(3952, 0);
     contadorMaterialNegras = 0;
-    historial_material_negras[contadorMaterialNegras] = std::make_pair(3952, 0);
+    historial_material_negras[contadorMaterialNegras] = std::make_pair(3952, 0);*/
 
     //El valor de la ocupación inicial se calcula, aunque siempre sea el mismo:
     /*historialOcupacionBlancas.push_back(valoracionMaterial(0));
     historialOcupacionNegras.push_back(valoracionMaterial(1));*/
-    contadorOcupacion = 0;
-    historial_ocupacion_blancas[contadorOcupacion] = calcularOcupacion(0);
-    historial_ocupacion_negras[contadorOcupacion] = calcularOcupacion(1);
+    calcularOcupacion();
     historialEnPassant.push_back(-1);
     zobrist = zobristKey();
     contadorZobrist++;
@@ -366,7 +385,7 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
 }
 
 
-//Inicialiazamos las lookup tables. 
+//Inicialiazamos las lookup tables.
 U64 Tablero::movimientosDeTorre[64][4096];
 U64 Tablero::movimientosDeAlfil[64][512];
 
@@ -466,12 +485,26 @@ void Tablero::imprimirTablero() {
 }
 
 void Tablero::deshacerMovimiento() {
-    
+
     //El orden de las siguientes operaciones es importante, ya que "actualizarZobristKey" asume que
     // los bitboards aún no fueron modificados con la posicioón que se quiere deshacer.
 
     u_short jugada = jugadas[contadorJugadas];
+    cambiosOcupacion aDeshacer = historialCambiosOcupacion[contadorJugadas];
+    int indiceCambio1 = aDeshacer.cambio1.first;
+    int indiceCambio2 = aDeshacer.cambio2.first;
+    int indiceCambio3 = aDeshacer.cambio3.first;
 
+    if(indiceCambio1 != -1){
+        ocupacionPiezas[indiceCambio1] -= aDeshacer.cambio1.second;
+    }
+    if(indiceCambio2 != -1){
+        ocupacionPiezas[indiceCambio2] -= aDeshacer.cambio2.second;
+    }
+    if(indiceCambio3 != -1){
+        ocupacionPiezas[indiceCambio3] -= aDeshacer.cambio3.second;
+    }
+    historialCambiosOcupacion[contadorJugadas] = cambiosOcupacion();
     derechosEnroqueAux = 0;
     contadorZobrist--;
     zobrist = historialZobrist[contadorZobrist];
@@ -502,16 +535,38 @@ void Tablero::deshacerMovimiento() {
    bitboards[indexPrimerCambio] = bitboardPrimerCambio;
    if(cambios.tipoDeBitboard_2 != -1) {
        int indexSegundoCambio = cambios.tipoDeBitboard_2;
+       if(operaciones_bit::getTipoDeJugada(jugada) != CASTLING){
+           if((operaciones_bit::getTipoDeJugada(jugada) != PROMOTION) &&
+                   (operaciones_bit::getTipoDeJugada(jugada) != PROMOTIONCHECK)) {
+               actualizarCantPiezas(indexSegundoCambio, true);
+           }
+           else{
+               actualizarCantPiezas(indexSegundoCambio, false);
+               actualizarCantPiezas(indexPrimerCambio, true);
+
+           }
+       }
        U64 bitboardSegundoCambio = cambios.bitboard_2;
        bitboards[indexSegundoCambio] = bitboardSegundoCambio;
 
+
    }
     if(cambios.tipoDeBitboard_3 != -1) {
+        int indexSegundoCambio = cambios.tipoDeBitboard_2;
+
+        actualizarCantPiezas(indexSegundoCambio, false);
+        actualizarCantPiezas(indexSegundoCambio, false);
+
         int indexTercerCambio = cambios.tipoDeBitboard_3;
         U64 bitboardTercerCambio = cambios.bitboard_3;
         bitboards[indexTercerCambio] = bitboardTercerCambio;
+        actualizarCantPiezas(indexTercerCambio, true);
+        actualizarCantPiezas(indexPrimerCambio, true);
+
+
     }
     contadorHistorialBitboards--;
+
 
     cambiarTurno();
 
@@ -525,15 +580,14 @@ void Tablero::deshacerUltimosRegistros() {//Eliminamos el último elemento de to
     ganoBlanco = false;
     historialEnPassant.pop_back();
 
-    if(modif_hist_material_blancas == numeroDeJugadas){
+/*    if(modif_hist_material_blancas == numeroDeJugadas){
         contadorMaterialBlancas--;
         modif_hist_material_blancas = historial_material_blancas[contadorMaterialBlancas].second;
     }
     if(modif_hist_material_negras == numeroDeJugadas){
         contadorMaterialNegras--;
         modif_hist_material_negras = historial_material_negras[contadorMaterialNegras].second;
-    }
-    contadorOcupacion--;
+    }*/
 };
 
 bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
@@ -549,25 +603,35 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             return false;
         }
     } else if (tipo_jugada == ENPASSANT) {
-        
+
+/*
         actualizarMaterial(aRealizar);
+*/
+        contadorJugadas++;
+
         actualizarOcupacion(aRealizar);
         actualizarZobristKey(aRealizar);
         contadorHistorialBitboards++;
-        modificacionBitboard cambios = {PEON_BLANCO, bitboards[PEON_BLANCO],
-                                        PEON_NEGRO, bitboards[PEON_NEGRO], -1, 0};
-        historialBitboards[contadorHistorialBitboards] = cambios;
+
 
         if (_turno == 0) {
+            peonesNegros--;
+            modificacionBitboard cambios = {PEON_BLANCO, bitboards[PEON_BLANCO],
+                                            PEON_NEGRO, bitboards[PEON_NEGRO], -1, 0};
+            historialBitboards[contadorHistorialBitboards] = cambios;
+
             bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], llegada, 1);
             bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], salida, 0);
             bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], llegada - 8, 0);
         } else {
+            peonesBlancos--;
+            modificacionBitboard cambios = {PEON_NEGRO, bitboards[PEON_NEGRO],
+                                            PEON_BLANCO, bitboards[PEON_BLANCO], -1, 0};
+            historialBitboards[contadorHistorialBitboards] = cambios;
             bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], llegada, 1);
             bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], salida, 0);
             bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], llegada + 8, 0);
         }
-        contadorJugadas++;
         jugadas[contadorJugadas] = aRealizar;
         historialEnPassant.push_back(-1);
         if (reyPropioEnJaque(_turno)) {
@@ -585,7 +649,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         cambiarTurno();
 ;
 
-/*        U64 zobristActual = zobristKey();
+       /* U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
  if(nuevaZobristKey != zobristActual){
             cout << "Zobrist erronea" << endl;
@@ -602,8 +666,12 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     } else if (tipo_jugada == PROMOTION) {
         ;
 
-        
+
+/*
         actualizarMaterial(aRealizar);
+*/
+        contadorJugadas++;
+
         actualizarOcupacion(aRealizar);
         actualizarZobristKey(aRealizar);
 
@@ -616,23 +684,28 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         if (_turno == 0) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) - 8;
             cambio1 = PEON_BLANCO;
+            peonesBlancos--;
             bitboard1 = bitboards[PEON_BLANCO];
             if (tipoDePieza(salida) == DAMA) {
+                damasBlancas++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 1;
                 bitboard2 = bitboards[1];
                 bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
+                torresBlancas++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 2;
                 bitboard2 = bitboards[2];
                 bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
+                alfilesBlancos++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 3;
                 bitboard2 = bitboards[3];
                 bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
+                caballosBlancos++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 4;
                 bitboard2 = bitboards[4];
@@ -641,24 +714,29 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
 
         } else {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) + 8;
+            peonesNegros--;
             cambio1 = 11;
             bitboard1 = bitboards[11];
             if (tipoDePieza(salida) == DAMA) {
+                damasNegras++;
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 7;
                 bitboard2 = bitboards[7];
                 bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
+                torresNegras++;
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 8;
                 bitboard2 = bitboards[8];
                 bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
+                alfilesNegros++;
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 9;
                 bitboard2 = bitboards[9];
                 bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
+                caballosNegros++;
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 10;
                 bitboard2 = bitboards[10];
@@ -671,7 +749,6 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
 
 
 
-        contadorJugadas++;
         jugadas[contadorJugadas] = aRealizar;
 
         historialEnPassant.push_back(-1);
@@ -687,9 +764,9 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         }
 
         cambiarTurno();
-/*        U64 zobristActual = zobristKey();
+        /*U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
-        
+
  if(nuevaZobristKey != zobristActual){
             cout << "Zobrist erronea" << endl;
             imprimirFen();
@@ -702,8 +779,12 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     } else if (tipo_jugada == PROMOTIONIZQ) {
         ;
 
-        
+
+/*
         actualizarMaterial(aRealizar);
+*/
+        contadorJugadas++;
+
         actualizarOcupacion(aRealizar);
         actualizarZobristKey(aRealizar);
         contadorHistorialBitboards++;
@@ -716,24 +797,29 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         U64 bitboard3;
         if (_turno == 0) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) - 9;
+            peonesBlancos--;
             cambio1 = PEON_BLANCO;
             bitboard1 = bitboards[PEON_BLANCO];
             if (tipoDePieza(salida) == DAMA) {
+                damasBlancas++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 1;
                 bitboard2 = bitboards[1];
                 bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
+                torresBlancas++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 2;
                 bitboard2 = bitboards[2];
                 bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
+                alfilesBlancos++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 3;
                 bitboard2 = bitboards[3];
                 bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
+                caballosBlancos++;
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 4;
                 bitboard2 = bitboards[4];
@@ -743,6 +829,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             for (int i = 7; i < 11; i++){
                 U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
                 if(bitboards[i] & bitboardAtaque){
+                    actualizarCantPiezas(i, false);
                     cambio3 = i;
                     bitboard3 = bitboards[i];
                     bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
@@ -756,8 +843,10 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         } else {
             cambio1 = 11;
             bitboard1 = bitboards[11];
+            peonesNegros--;
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) + 9;
             if (tipoDePieza(salida) == DAMA) {
+                damasNegras++;
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 7;
                 bitboard2 = bitboards[7];
@@ -765,16 +854,19 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             } else if (tipoDePieza(salida) == TORRE) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 8;
+                torresNegras++;
                 bitboard2 = bitboards[8];
                 bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 9;
+                alfilesNegros++;
                 bitboard2 = bitboards[9];
                 bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 10;
+                caballosNegros++;
                 bitboard2 = bitboards[10];
                 bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 1);
             }
@@ -783,6 +875,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             for(int i = 1; i < 5; i++){
                 if(bitboards[i] & bitboardAtaque){
                     cambio3 = i;
+                    actualizarCantPiezas(i, false);
                     bitboard3 = bitboards[i];
                     bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
                     break;
@@ -794,7 +887,6 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
 
 
 
-        contadorJugadas++;
         jugadas[contadorJugadas] = aRealizar;
 
         historialEnPassant.push_back(-1);
@@ -810,9 +902,9 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         }
 
         cambiarTurno();
-/*        U64 zobristActual = zobristKey();
+        /*U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
-        
+
  if(nuevaZobristKey != zobristActual){
             cout << "Zobrist erronea" << endl;
             imprimirFen();
@@ -827,8 +919,12 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     } else if (tipo_jugada == PROMOTIONDER) {
         ;
 
-        
+
+/*
         actualizarMaterial(aRealizar);
+*/
+        contadorJugadas++;
+
         actualizarOcupacion(aRealizar);
         actualizarZobristKey(aRealizar);
 
@@ -844,24 +940,29 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) - 7;
             cambio1 = PEON_BLANCO;
             bitboard1 = bitboards[PEON_BLANCO];
+            peonesBlancos--;
             if (tipoDePieza(salida) == DAMA) {
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 1;
+                damasBlancas++;
                 bitboard2 = bitboards[1];
                 bitboards[1] = operaciones_bit::setBit(bitboards[1], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 2;
+                torresBlancas++;
                 bitboard2 = bitboards[2];
                 bitboards[2] = operaciones_bit::setBit(bitboards[2], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 3;
+                alfilesBlancos++;
                 bitboard2 = bitboards[3];
                 bitboards[3] = operaciones_bit::setBit(bitboards[3], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
                 bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], casillaPromocion, 0);
                 cambio2 = 4;
+                caballosBlancos++;
                 bitboard2 = bitboards[4];
                 bitboards[4] = operaciones_bit::setBit(bitboards[4], llegada, 1);
             }
@@ -870,6 +971,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             for (int i = 7; i < 11; i++){
                 if(bitboards[i] & bitboardAtaque){
                     cambio3 = i;
+                    actualizarCantPiezas(i, false);
                     bitboard3 = bitboards[i];
                     bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
                     break;
@@ -882,24 +984,29 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
             int casillaPromocion = operaciones_bit::getLlegada(aRealizar) + 7;
             cambio1 = 11;
             bitboard1 = bitboards[11];
+            peonesNegros--;
             if (tipoDePieza(salida) == DAMA) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 7;
+                damasNegras++;
                 bitboard2 = bitboards[7];
                 bitboards[7] = operaciones_bit::setBit(bitboards[7], llegada, 1);
             } else if (tipoDePieza(salida) == TORRE) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 8;
+                torresNegras++;
                 bitboard2 = bitboards[8];
                 bitboards[8] = operaciones_bit::setBit(bitboards[8], llegada, 1);
             } else if (tipoDePieza(salida) == ALFIL) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 9;
+                alfilesNegros++;
                 bitboard2 = bitboards[9];
                 bitboards[9] = operaciones_bit::setBit(bitboards[9], llegada, 1);
             } else if (tipoDePieza(salida) == CABALLO) {
                 bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaPromocion, 0);
                 cambio2 = 10;
+                caballosNegros++;
                 bitboard2 = bitboards[10];
                 bitboards[10] = operaciones_bit::setBit(bitboards[10], llegada, 1);
             }
@@ -908,6 +1015,8 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
                 U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
                 if(bitboards[i] & bitboardAtaque){
                     cambio3 = i;
+                    actualizarCantPiezas(i, false);
+
                     bitboard3 = bitboards[i];
                     bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
                     break;
@@ -919,7 +1028,6 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
 
 
 
-        contadorJugadas++;
         jugadas[contadorJugadas] = aRealizar;
 
         historialEnPassant.push_back(-1);
@@ -938,7 +1046,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
 
 
         ///Esta pieza de código sirve para debuggear el buen funcioniento de la zobristKey.
-/*        U64 zobristActual = zobristKey();
+       /* U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
  if(nuevaZobristKey != zobristActual){
             cout << "Zobrist erronea" << endl;
@@ -948,7 +1056,6 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
                 cout << x << endl;
             } exit(0);
         }*/
-
         return true;
 
     }
@@ -1049,6 +1156,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
                 columnaDeEnpassant = 7;
             }
             historialEnPassant.push_back(columnaDeEnpassant);
+            agregueAlgoAlHistorialEP = true;
             actualiceEnPassant = true;
         }
     }
@@ -1065,15 +1173,19 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         enroqueLargoNegro.push_back(enroqueLargoNegro.back());
     }*/
 
-    if (obtenerTipoDePieza(salida) == DAMA && (_turno == 0) ? !desarrolloBlancasCompleto()
-                                                            : !desarrolloNegrasCompleto()) {
+    if ((obtenerTipoDePieza(salida) == DAMA) && (((_turno == 0) && !desarrolloBlancasCompleto())
+                                                || ((_turno == 1) && !desarrolloNegrasCompleto()))){
         if (_turno == 0) {
             movimientoTempranoDamaBlanca = true;
         } else {
             movimientoTempranoDamaNegra = true;
         }
     }
+/*
     actualizarMaterial(aRealizar);
+*/
+    contadorJugadas++;
+
     actualizarOcupacion(aRealizar);
     actualizarZobristKey(aRealizar);
 
@@ -1101,6 +1213,8 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         } else if ((bitboards[k] & llegadaBitboard) > 0) {
             cambio2 = k;
             bitboard2 = bitboards[k];
+            actualizarCantPiezas(k, false);
+
             bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 0);
 
         }
@@ -1108,7 +1222,6 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     contadorHistorialBitboards++;
     modificacionBitboard cambios = {cambio1, bitboard1, cambio2, bitboard2, -1, 0};
     historialBitboards[contadorHistorialBitboards] = cambios;
-    contadorJugadas++;
     jugadas[contadorJugadas] = aRealizar;
 /*
     _jugadas.push_back(aRealizar);
@@ -1146,9 +1259,9 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     }
     cambiarTurno();
 ;
-/*    U64 zobristActual = zobristKey();
+   /* U64 zobristActual = zobristKey();
     U64 nuevaZobristKey = zobrist;
-    
+
     if(nuevaZobristKey != zobristActual){
         cout << "Zobrist erronea" << endl;
         imprimirFen();
@@ -2678,7 +2791,9 @@ bool Tablero::chequearEnroqueLargo() {
 bool Tablero::enrocar(u_short jugada) {
 
     if (operaciones_bit::getLlegada(jugada) == 2 && chequearEnroqueCorto()) {
+/*
         actualizarMaterial(jugada);
+*/
         setearEnroque(0, false);
 
         /*enroqueCortoBlanco.push_back(false);*/
@@ -2687,10 +2802,11 @@ bool Tablero::enrocar(u_short jugada) {
         setearEnroque(1, false);
         guardarEnroque();
         /*enroqueLargoBlanco.push_back(false);*/
+        contadorJugadas++;
+
         actualizarOcupacion(jugada);
         actualizarZobristKey(jugada);
 
-        contadorJugadas++;
         jugadas[contadorJugadas] = jugada;
         contadorHistorialBitboards++;
         modificacionBitboard cambios = {0,bitboards[0], 2, bitboards[2], -1, 0};
@@ -2709,7 +2825,7 @@ bool Tablero::enrocar(u_short jugada) {
 
 
         enrocoBlancas = true;
-/*        U64 zobristActual = zobristKey();
+        /*U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
 
 
@@ -2724,7 +2840,9 @@ bool Tablero::enrocar(u_short jugada) {
         return true;
 
     } else if (operaciones_bit::getLlegada(jugada) == 6 && chequearEnroqueLargo()) {
+/*
         actualizarMaterial(jugada);
+*/
         setearEnroque(0, false);
 /*
         enroqueCortoBlanco.push_back(false);
@@ -2735,7 +2853,8 @@ bool Tablero::enrocar(u_short jugada) {
         guardarEnroque();
 /*
         enroqueLargoBlanco.push_back(false);
-*/
+*/        contadorJugadas++;
+
         actualizarOcupacion(jugada);
         actualizarZobristKey(jugada);
 
@@ -2749,13 +2868,12 @@ bool Tablero::enrocar(u_short jugada) {
 /*
         _jugadas.push_back(jugada);
 */
-        contadorJugadas++;
         jugadas[contadorJugadas] = jugada;
 
         historialEnPassant.push_back(-1);
         _turno = 1;
         enrocoBlancas = true;
-/*        U64 zobristActual = zobristKey();
+       /* U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
 
        if(nuevaZobristKey != zobristActual){
@@ -2768,7 +2886,9 @@ bool Tablero::enrocar(u_short jugada) {
 
         return true;
     } else if (operaciones_bit::getLlegada(jugada) == 58 && chequearEnroqueCorto()) {
+/*
         actualizarMaterial(jugada);
+*/
 /*
         enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
 */
@@ -2781,6 +2901,8 @@ bool Tablero::enrocar(u_short jugada) {
 /*
         enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
 */
+        contadorJugadas++;
+
         actualizarOcupacion(jugada);
         actualizarZobristKey(jugada);
 
@@ -2796,13 +2918,12 @@ bool Tablero::enrocar(u_short jugada) {
 /*
         _jugadas.push_back(jugada);
 */
-        contadorJugadas++;
         jugadas[contadorJugadas] = jugada;
 
         _turno = 0;
 
         enrocoNegras = true;
-/*        U64 zobristActual = zobristKey();
+       /* U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
 
         if(nuevaZobristKey != zobristActual){
@@ -2814,7 +2935,9 @@ bool Tablero::enrocar(u_short jugada) {
         exit(0);}*/
         return true;
     } else if (operaciones_bit::getLlegada(jugada) == 62 && chequearEnroqueLargo()) {
+/*
         actualizarMaterial(jugada);
+*/
 /*
         enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
 */
@@ -2826,6 +2949,8 @@ bool Tablero::enrocar(u_short jugada) {
 /*
         enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());
 */
+        contadorJugadas++;
+
         actualizarOcupacion(jugada);
         actualizarZobristKey(jugada);
 
@@ -2841,14 +2966,13 @@ bool Tablero::enrocar(u_short jugada) {
 /*
         _jugadas.push_back(jugada);
 */
-        contadorJugadas++;
         jugadas[contadorJugadas] = jugada;
 
         _turno = 0;
 
         enrocoNegras = true;
 
-/*        U64 zobristActual = zobristKey();
+       /* U64 zobristActual = zobristKey();
         U64 nuevaZobristKey = zobrist;
         if(nuevaZobristKey != zobristActual){
             cout << "Zobrist erronea" << endl;
@@ -3597,7 +3721,7 @@ float Tablero:: controlDeCentro(int color){
     return (controlDeCentroAlfil( color) + controlDeCentroCaballo( color) + controlDeCentroPeon( color));
 }*/
 
-float Tablero::calcularOcupacionAlfil(int color) {
+void Tablero::calcularOcupacionAlfil(int color) {
     float valor = 0;
     if (color == 0) {
         U64 bitboardAlfil = bitboards[3];
@@ -3605,18 +3729,20 @@ float Tablero::calcularOcupacionAlfil(int color) {
             int casilla = operaciones_bit::LSB(bitboardAlfil);
             valor += constantes::ocupacionAlfil[casilla - 1];
         }
+        ocupacionPiezas[3] = valor;
     } else {
         U64 bitboardAlfil = bitboards[9];
         while (bitboardAlfil > 0) {
             int casilla = operaciones_bit::LSB(bitboardAlfil);
             valor -= constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(casilla)];
         }
+        ocupacionPiezas[9] = valor;
+
     }
-    return valor;
 
 }
 
-float Tablero::calcularOcupacionCaballo(int color) {
+void Tablero::calcularOcupacionCaballo(int color) {
     float valor = 0;
     if (color == 0) {
         U64 bitboardCaballo = bitboards[4];
@@ -3624,17 +3750,20 @@ float Tablero::calcularOcupacionCaballo(int color) {
             int casilla = operaciones_bit::LSB(bitboardCaballo);
             valor += constantes::ocupacionCaballo[casilla - 1];
         }
+        ocupacionPiezas[4] = valor;
+
     } else {
         U64 bitboardCaballo = bitboards[10];
         while (bitboardCaballo > 0) {
             int casilla = operaciones_bit::LSB(bitboardCaballo);
             valor -= constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(casilla)];
         }
+        ocupacionPiezas[10] = valor;
+
     }
-    return valor;
 }
 
-float Tablero::calcularOcupacionPeon(int color) {
+void Tablero::calcularOcupacionPeon(int color) {
     float valor = 0;
     if (color == 0) {
         U64 bitboardPeon = bitboards[5];
@@ -3642,17 +3771,19 @@ float Tablero::calcularOcupacionPeon(int color) {
             int casilla = operaciones_bit::LSB(bitboardPeon);
             valor += constantes::ocupacionPeon[casilla - 1];
         }
+        ocupacionPiezas[5] = valor;
     } else {
         U64 bitboardPeon = bitboards[11];
         while (bitboardPeon > 0) {
             int casilla = operaciones_bit::LSB(bitboardPeon);
             valor -= constantes::ocupacionPeon[operaciones_bit::espejarCasilla(casilla)];
         }
+        ocupacionPiezas[11] = valor;
+
     }
-    return valor;
 }
 
-float Tablero::calcularOcupacionTorre(int color) {
+void  Tablero::calcularOcupacionTorre(int color) {
     float valor = 0;
     if (color == 0) {
         U64 bitboardTorre = bitboards[2];
@@ -3660,17 +3791,18 @@ float Tablero::calcularOcupacionTorre(int color) {
             int casilla = operaciones_bit::LSB(bitboardTorre);
             valor += constantes::ocupacionTorre[casilla - 1];
         }
+        ocupacionPiezas[2] = valor;
     } else {
         U64 bitboardTorre = bitboards[8];
         while (bitboardTorre > 0) {
             int casilla = operaciones_bit::LSB(bitboardTorre);
             valor -= constantes::ocupacionTorre[operaciones_bit::espejarCasilla(casilla)];
         }
+        ocupacionPiezas[8] = valor;
     }
-    return valor;
 }
 
-float Tablero::calcularOcupacionReina(int color) {
+void  Tablero::calcularOcupacionReina(int color) {
     float valor = 0;
     if (color == 0) {
         U64 bitboardReina = bitboards[1];
@@ -3678,48 +3810,55 @@ float Tablero::calcularOcupacionReina(int color) {
             int casilla = operaciones_bit::LSB(bitboardReina);
             valor += constantes::ocupacionReina[casilla - 1];
         }
+        ocupacionPiezas[1] = valor;
     } else {
         U64 bitboardReina = bitboards[7];
         while (bitboardReina > 0) {
             int casilla = operaciones_bit::LSB(bitboardReina);
             valor -= constantes::ocupacionReina[operaciones_bit::espejarCasilla(casilla)];
         }
+        ocupacionPiezas[7] = valor;
     }
-    return valor;
 }
 
-float Tablero::calcularOcupacionRey(int color) {
-    float valor = 0;
+void  Tablero::calcularOcupacionRey(int color) {
+    float valorMedio = 0;
+    float valorFinal = 0;
     if (color == 0) {
         U64 bitboardRey = bitboards[0];
         while (bitboardRey > 0) {
             int casilla = operaciones_bit::LSB(bitboardRey);
-            if (endgame) {
-                valor += constantes::ocupacionReyFinal[casilla - 1];
-            } else {
-                valor += constantes::ocupacionReyMedioJuego[casilla - 1];
-            }
+                valorFinal += constantes::ocupacionReyFinal[casilla - 1];
+                valorMedio += constantes::ocupacionReyMedioJuego[casilla - 1];
+            ocupacionPiezas[0] = valorMedio;
+            ocupacionPiezas[12] = valorFinal;
         }
     } else {
         U64 bitboardRey = bitboards[6];
         while (bitboardRey > 0) {
             int casilla = operaciones_bit::LSB(bitboardRey);
-            if (endgame) {
-                valor -= constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(casilla)];
-            } else {
-                valor -= constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(casilla)];
-            }
+
+                valorFinal-= constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(casilla)];
+                valorMedio -= constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(casilla)];
+            ocupacionPiezas[6] = valorMedio;
+            ocupacionPiezas[13] = valorFinal;
         }
     }
-    return valor;
 }
 
-float Tablero::calcularOcupacion(int color) {
-    return (calcularOcupacionAlfil(color) +
-            calcularOcupacionCaballo(color) +
-            calcularOcupacionPeon(color) +
-            calcularOcupacionReina(color) +
-            calcularOcupacionTorre(color) + calcularOcupacionRey(color));
+void Tablero::calcularOcupacion() {
+            calcularOcupacionAlfil(0);
+            calcularOcupacionCaballo(0);
+            calcularOcupacionPeon(0);
+            calcularOcupacionReina(0);
+            calcularOcupacionTorre(0);
+            calcularOcupacionRey(0);
+            calcularOcupacionAlfil(1);
+            calcularOcupacionCaballo(1);
+            calcularOcupacionPeon(1);
+            calcularOcupacionReina(1);
+            calcularOcupacionTorre(1);
+            calcularOcupacionRey(1);
 
 }
 
@@ -3815,39 +3954,47 @@ void Tablero::actualizarOcupacion(u_short jugada) {
     int llegada = operaciones_bit::getLlegada(jugada);
     int tipoDePieza = obtenerTipoDePieza(salida);
     int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
-    /*float ocupacionNegras = historialOcupacionNegras.back();
-    float ocupacionBlancas = historialOcupacionBlancas.back();*/
-    float ocupacion_blancas = historial_ocupacion_blancas[contadorOcupacion];
-    float ocupacion_negras = historial_ocupacion_negras[contadorOcupacion];
+
+    //Aca estamos usando una estructura que guarda 3 pairs que denotan los 3 posibles cambios.
+    //Para evitar codigo engorroso, a la hora de registrar cambios en la pieza que se movio, directamente
+    //lo asignamos al cambio numero 2, ya que hay posibilidad de que el cambio 1 ya este asignado
+
+    cambiosOcupacion cambios = cambiosOcupacion();
     if (_turno == 0) {
 
         if (tipoDeJugada == ENPASSANT) {
+            cambios.cambio1.first = 5;
             //Si la jugada fue ENPASSANT, se elimina el valor de ocupacion del peon rival y se
             //actualiza el valor de ocupacion del peon propio
-            ocupacion_blancas += (constantes::ocupacionPeon[llegada - 1]
+            cambios.cambio1.second = (constantes::ocupacionPeon[llegada - 1]
                                  - constantes::ocupacionPeon[salida - 1]);
+            ocupacionPiezas[5] += cambios.cambio1.second;
 
             //"Eliminar" en este contexto es simplemente sumar el valor, ya que para las negras los
             //valores de ocupación favorables son negativos
-            ocupacion_negras += constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)];
-            contadorOcupacion++;
-            /*historialOcupacionBlancas.push_back(ocupacionBlancas);
-            historialOcupacionNegras.push_back(ocupacionNegras);*/
-            historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
-            historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
+            cambios.cambio2.first = 11;
+            cambios.cambio2.second = constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada - 8)];
+            ocupacionPiezas[11] += cambios.cambio2.second;
+            historialCambiosOcupacion[contadorJugadas] = cambios;
             return;
         } else if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK) {
             //Si la última jugada fue una promoción sin captura, se elimina el
             // valor de ocupación del peón coronado
-            ocupacion_blancas -= constantes::ocupacionPeon[llegada - 8];
+            cambios.cambio1.first = 5;
+            cambios.cambio1.second = -constantes::ocupacionPeon[llegada - 9];
+            ocupacionPiezas[5] += cambios.cambio1.second;
         } else if (tipoDeJugada == CASTLING) {
             //Si la última jugada fue un enroque, se actualiza la ocupación de las torres
+            cambios.cambio1.first = 2;
             if (llegada == 2) {
-                ocupacion_blancas += (constantes::ocupacionTorre[2]
+                cambios.cambio1.second = (constantes::ocupacionTorre[2]
                                      - constantes::ocupacionTorre[0]);
+                ocupacionPiezas[2] += cambios.cambio1.second;
             } else {
-                ocupacion_blancas += (constantes::ocupacionTorre[4]
+                cambios.cambio1.second = (constantes::ocupacionTorre[4]
                                      - constantes::ocupacionTorre[7]);
+                ocupacionPiezas[2] += cambios.cambio1.second;
+
             }
 
         } else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
@@ -3856,15 +4003,27 @@ void Tablero::actualizarOcupacion(u_short jugada) {
             //Si la última jugada fue una captura, se elimina el valor de ocupación de la pieza capturada
             int piezaCapturada = obtenerTipoDePieza(llegada);
             if (piezaCapturada == DAMA) {
-                ocupacion_negras += constantes::ocupacionReina[operaciones_bit::espejarCasilla(llegada)];
+                cambios.cambio1.first = 7;
+                 cambios.cambio1.second = constantes::ocupacionReina[operaciones_bit::espejarCasilla(llegada)];
+                ocupacionPiezas[7] += cambios.cambio1.second;
+
             } else if (piezaCapturada == TORRE) {
-                ocupacion_negras += constantes::ocupacionTorre[operaciones_bit::espejarCasilla(llegada)];
+                cambios.cambio1.first = 8;
+                cambios.cambio1.second = constantes::ocupacionTorre[operaciones_bit::espejarCasilla(llegada)];
+                ocupacionPiezas[8] += cambios.cambio1.second;
+
             } else if (piezaCapturada == ALFIL) {
-                ocupacion_negras += constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(llegada)];
+                cambios.cambio1.first = 9;
+                cambios.cambio1.second= constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(llegada)];
+                ocupacionPiezas[9] += cambios.cambio1.second;
             } else if (piezaCapturada == CABALLO) {
-                ocupacion_negras += constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(llegada)];
+                cambios.cambio1.first = 10;
+                cambios.cambio1.second= constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(llegada)];
+                ocupacionPiezas[10] += cambios.cambio1.second;
             } else if (piezaCapturada == PEON) {
-                ocupacion_negras += constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)];
+                cambios.cambio1.first = 11;
+                cambios.cambio1.second= constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)];
+                ocupacionPiezas[11] += cambios.cambio1.second;
             }
 
         }
@@ -3884,73 +4043,124 @@ void Tablero::actualizarOcupacion(u_short jugada) {
         }
         //Se agrega ahora el valor de ocupación de la pieza movida en la casilla nueva
         if (tipoDePieza == REY) {
-            if (!endgame) {
-                ocupacion_blancas += (constantes::ocupacionReyMedioJuego[llegada - 1]
+
+            cambios.cambio2.first = 0;
+            cambios.cambio2.second = (constantes::ocupacionReyMedioJuego[llegada - 1]
                                      - constantes::ocupacionReyMedioJuego[salida - 1]);
-            } else {
-                ocupacion_blancas += (constantes::ocupacionReyFinal[llegada - 1]
+            ocupacionPiezas[0] += cambios.cambio2.second;
+
+
+            cambios.cambio3.first = 12;
+            cambios.cambio3.second = (constantes::ocupacionReyFinal[llegada - 1]
                                      - constantes::ocupacionReyFinal[salida - 1]);
-            }
+            ocupacionPiezas[12] += cambios.cambio3.second;
+
+
         } else if (tipoDePieza == DAMA) {
-            ocupacion_blancas += constantes::ocupacionReina[llegada - 1];
+            cambios.cambio2.first = 1;
+            cambios.cambio2.second = constantes::ocupacionReina[llegada - 1];
+            ocupacionPiezas[1] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_blancas -= constantes::ocupacionReina[salida - 1];
+                cambios.cambio3.first = 1;
+                cambios.cambio3.second  = -constantes::ocupacionReina[salida - 1];
+                ocupacionPiezas[1] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 5;
+                cambios.cambio3.second = -constantes::ocupacionPeon[salida - 1];
+                ocupacionPiezas[5] += cambios.cambio3.second;
             }
         } else if (tipoDePieza == TORRE) {
-            ocupacion_blancas += constantes::ocupacionTorre[llegada - 1];
+            cambios.cambio2.first = 2;
+            cambios.cambio2.second = constantes::ocupacionTorre[llegada - 1];
+            ocupacionPiezas[2] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_blancas -= constantes::ocupacionTorre[salida - 1];
+                cambios.cambio3.first = 2;
+                cambios.cambio3.second  =  -constantes::ocupacionTorre[salida - 1];
+                ocupacionPiezas[2] += cambios.cambio3.second;
+
+
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 5;
+                cambios.cambio3.second = -constantes::ocupacionPeon[salida - 1];
+                ocupacionPiezas[5] += cambios.cambio3.second;
+
             }
         } else if (tipoDePieza == ALFIL) {
-            ocupacion_blancas += constantes::ocupacionAlfil[llegada - 1];
+            cambios.cambio2.first = 3;
+            cambios.cambio2.second = constantes::ocupacionAlfil[llegada - 1];
+            ocupacionPiezas[3] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_blancas -= constantes::ocupacionAlfil[salida - 1];
+                cambios.cambio3.first = 3;
+                cambios.cambio3.second = -constantes::ocupacionAlfil[salida - 1];
+                ocupacionPiezas[3] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 5;
+                cambios.cambio3.second = -constantes::ocupacionPeon[salida - 1];
+                ocupacionPiezas[5] += cambios.cambio3.second;
+
             }
         } else if (tipoDePieza == CABALLO) {
-            ocupacion_blancas += constantes::ocupacionCaballo[llegada - 1];
+            cambios.cambio2.first = 4;
+            cambios.cambio2.second = constantes::ocupacionCaballo[llegada - 1];
+            ocupacionPiezas[4] += cambios.cambio2.second;
+
             if (!esPromocion) {
-                ocupacion_blancas -= constantes::ocupacionCaballo[salida - 1];
+                cambios.cambio3.first = 4;
+                cambios.cambio3.second = -constantes::ocupacionCaballo[salida - 1];
+                ocupacionPiezas[4] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 5;
+                cambios.cambio3.second = -constantes::ocupacionPeon[salida - 1];
+                ocupacionPiezas[5] += cambios.cambio3.second;
+
             }
         } else if (tipoDePieza == PEON) {
-            ocupacion_blancas += (constantes::ocupacionPeon[llegada - 1]
+            cambios.cambio2.first = 5;
+            cambios.cambio2.second  = (constantes::ocupacionPeon[llegada - 1]
                                  - constantes::ocupacionPeon[salida - 1]);
+            ocupacionPiezas[5] += cambios.cambio2.second;
         }
 
-        /*historialOcupacionBlancas.push_back(ocupacionBlancas);
-        historialOcupacionNegras.push_back(ocupacionNegras);*/
-        contadorOcupacion++;
-        historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
-        historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
     } else {
         if (tipoDeJugada == ENPASSANT) {
             //Si la jugada fue ENPASSANT, se elimina el valor de ocupacion del peon rival y se
             //actualiza el valor de ocupacion del peon propio
-            ocupacion_negras -= (constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)]
-                                - constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)]);
+            cambios.cambio1.first = 11;
+            cambios.cambio1.second = -((constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)]
+                                - constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)]));
+            ocupacionPiezas[11] += cambios.cambio1.second;
 
             //"Eliminar" en este contexto es simplemente restar el valor, ya que para las blancas los
             //valores de ocupación favorables son positivos
-            ocupacion_blancas -= constantes::ocupacionPeon[llegada - 1];
+            cambios.cambio2.first = 5;
+            cambios.cambio2.second = -constantes::ocupacionPeon[llegada + 7];
+            ocupacionPiezas[5] += cambios.cambio2.second;
 
-            /*historialOcupacionBlancas.push_back(ocupacionBlancas);
-            historialOcupacionNegras.push_back(ocupacionNegras);*/
-            contadorOcupacion++;
-            historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
-            historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
+            historialCambiosOcupacion[contadorJugadas] = cambios;
+
 
             return;
         } else if (tipoDeJugada == PROMOTION || tipoDeJugada == PROMOTIONCHECK) {
             //Si la última jugada fue una promoción sin captura, se elimina el
             // valor de ocupación del peón coronado
-            ocupacion_negras += constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada + 8)];
+            cambios.cambio1.first = 11;
+            cambios.cambio1.second = constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada + 8)];
+            ocupacionPiezas[11] += cambios.cambio1.second;
         } else if (tipoDeJugada == CASTLING) {
             //Si la última jugada fue un enroque, se actualiza la ocupación de las torres
+            cambios.cambio1.first = 8;
             if (llegada == 58) {
-                ocupacion_negras -= (constantes::ocupacionTorre[2]
-                                    - constantes::ocupacionTorre[0]);
+                cambios.cambio1.second = -((constantes::ocupacionTorre[2]
+                                    - constantes::ocupacionTorre[0]));
+                ocupacionPiezas[8] += cambios.cambio1.second;
             } else {
-                ocupacion_negras -= (constantes::ocupacionTorre[4]
-                                    - constantes::ocupacionTorre[7]);
+                cambios.cambio1.second = -((constantes::ocupacionTorre[4]
+                                    - constantes::ocupacionTorre[7]));
+                ocupacionPiezas[8] += cambios.cambio1.second;
             }
 
         } else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
@@ -3959,15 +4169,25 @@ void Tablero::actualizarOcupacion(u_short jugada) {
             //Si la última jugada fue una captura, se elimina el valor de ocupación de la pieza capturada
             int piezaCapturada = obtenerTipoDePieza(llegada);
             if (piezaCapturada == DAMA) {
-                ocupacion_blancas -= constantes::ocupacionReina[llegada - 1];
+                cambios.cambio1.first = 1;
+                cambios.cambio1.second = -constantes::ocupacionReina[llegada - 1];
+                ocupacionPiezas[1] += cambios.cambio1.second;
             } else if (piezaCapturada == TORRE) {
-                ocupacion_blancas -= constantes::ocupacionTorre[llegada - 1];
+                cambios.cambio1.first = 2;
+                cambios.cambio1.second = -constantes::ocupacionTorre[llegada - 1];
+                ocupacionPiezas[2] += cambios.cambio1.second;
             } else if (piezaCapturada == ALFIL) {
-                ocupacion_blancas -= constantes::ocupacionAlfil[llegada - 1];
+                cambios.cambio1.first = 3;
+                cambios.cambio1.second = -constantes::ocupacionAlfil[llegada - 1];
+                ocupacionPiezas[3] += cambios.cambio1.second;
             } else if (piezaCapturada == CABALLO) {
-                ocupacion_blancas -= constantes::ocupacionCaballo[llegada - 1];
+                cambios.cambio1.first = 4;
+                cambios.cambio1.second = - constantes::ocupacionCaballo[llegada - 1];
+                ocupacionPiezas[4] += cambios.cambio1.second;
             } else if (piezaCapturada == PEON) {
-                ocupacion_blancas -= constantes::ocupacionPeon[llegada - 1];
+                cambios.cambio1.first = 5;
+                cambios.cambio1.second = - constantes::ocupacionPeon[llegada - 1];
+                ocupacionPiezas[5] += cambios.cambio1.second;
             }
         }
 
@@ -3988,71 +4208,114 @@ void Tablero::actualizarOcupacion(u_short jugada) {
 
         //Se agrega ahora el valor de ocupación de la pieza movida en la casilla nueva
         if (tipoDePieza == REY) {
-            if (!endgame) {
-                ocupacion_negras -= (
+                cambios.cambio2.first = 6;
+                cambios.cambio2.second = -((
                         constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(llegada)]
-                        - constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(salida)]);
-            } else {
-                ocupacion_negras -= (constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(llegada)]
-                                    - constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(salida)]);
-            }
+                        - constantes::ocupacionReyMedioJuego[operaciones_bit::espejarCasilla(salida)]));
+            ocupacionPiezas[6] += cambios.cambio2.second;
+            cambios.cambio3.first = 13;
+            cambios.cambio3.second = -((constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(llegada)]
+                                    - constantes::ocupacionReyFinal[operaciones_bit::espejarCasilla(salida)]));
+            ocupacionPiezas[13] += cambios.cambio3.second;
+
         } else if (tipoDePieza == DAMA) {
-            ocupacion_negras -= constantes::ocupacionReina[operaciones_bit::espejarCasilla(llegada)];
+            cambios.cambio2.first = 7;
+            cambios.cambio2.second = -constantes::ocupacionReina[operaciones_bit::espejarCasilla(llegada)];
+            ocupacionPiezas[7] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_negras += constantes::ocupacionReina[operaciones_bit::espejarCasilla(salida)];
+                cambios.cambio3.first = 7;
+                cambios.cambio3.second = constantes::ocupacionReina[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[7] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 11;
+                cambios.cambio3.second = constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[11] += cambios.cambio3.second;
+
             }
         } else if (tipoDePieza == TORRE) {
-            ocupacion_negras -= constantes::ocupacionTorre[operaciones_bit::espejarCasilla(llegada)];
+            cambios.cambio2.first = 8;
+            cambios.cambio2.second = -constantes::ocupacionTorre[operaciones_bit::espejarCasilla(llegada)];
+            ocupacionPiezas[8] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_negras += constantes::ocupacionTorre[operaciones_bit::espejarCasilla(salida)];
+                cambios.cambio3.first = 8;
+                cambios.cambio3.second = constantes::ocupacionTorre[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[8] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 11;
+                cambios.cambio3.second = constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[11] += cambios.cambio3.second;
+
             }
         } else if (tipoDePieza == ALFIL) {
-            ocupacion_negras -= constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(llegada)];
+            cambios.cambio2.first = 9;
+            cambios.cambio2.second = -constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(llegada)];
+            ocupacionPiezas[9] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_negras += constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(salida)];
+                cambios.cambio3.first = 9;
+                cambios.cambio3.second = constantes::ocupacionAlfil[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[9] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 11;
+                cambios.cambio3.second = constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[11] += cambios.cambio3.second;
+
             }
         } else if (tipoDePieza == CABALLO) {
-            ocupacion_negras -= constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(llegada)];
+            cambios.cambio2.first = 10;
+            cambios.cambio2.second = -constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(llegada)];
+            ocupacionPiezas[10] += cambios.cambio2.second;
             if (!esPromocion) {
-                ocupacion_negras += constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(salida)];
+                cambios.cambio3.first = 10;
+                cambios.cambio3.second = constantes::ocupacionCaballo[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[10] += cambios.cambio3.second;
+            }
+            else if ((tipoDeJugada != PROMOTION) && (tipoDeJugada != PROMOTIONCHECK)){
+                cambios.cambio3.first = 11;
+                cambios.cambio3.second = constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)];
+                ocupacionPiezas[11] += cambios.cambio3.second;
+
             }
 
         } else if (tipoDePieza == PEON) {
-            ocupacion_negras -= (constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)]
-                                - constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)]);
+            cambios.cambio2.first = 11;
+            cambios.cambio2.second = -((constantes::ocupacionPeon[operaciones_bit::espejarCasilla(llegada)]
+                                - constantes::ocupacionPeon[operaciones_bit::espejarCasilla(salida)]));
+            ocupacionPiezas[11] += cambios.cambio2.second;
         }
-        /*historialOcupacionBlancas.push_back(ocupacionBlancas);
-        historialOcupacionNegras.push_back(ocupacionNegras);*/
-        contadorOcupacion++;
-        historial_ocupacion_blancas[contadorOcupacion] = ocupacion_blancas;
-        historial_ocupacion_negras[contadorOcupacion] = ocupacion_negras;
+
     }
+
+    historialCambiosOcupacion[contadorJugadas] = cambios;
+
 
 }
 
-void Tablero::actualizarMaterial(u_short jugada) {
+/*void Tablero::actualizarMaterial(u_short jugada) {
     int tipoDeJugada = operaciones_bit::getTipoDeJugada(jugada);
     if(tipoDeJugada == CASTLING || tipoDeJugada == QUIET || tipoDeJugada == CHECK){
         return;
     }
-    int material_blancas = historial_material_blancas[contadorMaterialBlancas].first;
-    int material_negras = historial_material_negras[contadorMaterialNegras].first;
+*//*    int material_blancas = historial_material_blancas[contadorMaterialBlancas].first;
+    int material_negras = historial_material_negras[contadorMaterialNegras].first;*//*
     int salida = operaciones_bit::getSalida(jugada);
     int llegada = operaciones_bit::getLlegada(jugada);
     int tipoDePieza = obtenerTipoDePieza(salida);
     if (_turno == 0) {
         if (tipoDeJugada == ENPASSANT) {
             //Si la jugada fue ENPASSANT, se elimina el valor del peon rival
-/*
+*//*
             materialNegras -= constantes::valorPieza[11];
-*/
+*//*
             material_negras -= constantes::valorPieza[11];
             std::pair<int, int> par = std::make_pair(material_negras, numeroDeJugadas);
             contadorMaterialNegras++;
             modif_hist_material_negras = numeroDeJugadas;
             historial_material_negras[contadorMaterialNegras] = par;
-            /*historialMaterialBlancas.push_back(materialBlancas);
-            historialMaterialNegras.push_back(materialNegras);*/
+            *//*historialMaterialBlancas.push_back(materialBlancas);
+            historialMaterialNegras.push_back(materialNegras);*//*
             return;
         }  else if (tipoDeJugada == CAPTURE || tipoDeJugada == CAPTURECHECK ||
                    tipoDeJugada == PROMOTIONIZQ || tipoDeJugada == PROMOTIONDER ||
@@ -4121,11 +4384,10 @@ void Tablero::actualizarMaterial(u_short jugada) {
 
     }
 
-}
+}*/
 
 void Tablero::actualizarZobristKey(u_short jugada) {
     U64 nuevaZobristKey = zobrist;
-    bool agregueAlgoAlHistorialEP = ((historialEnPassant.size() - (contadorJugadas+1)) == 2);
 
         if ((historialEnPassant.back() != -1) && agregueAlgoAlHistorialEP) {
             nuevaZobristKey ^= constantes::enPassant[historialEnPassant.back()];
@@ -4137,14 +4399,14 @@ void Tablero::actualizarZobristKey(u_short jugada) {
         if (!agregueAlgoAlHistorialEP && (historialEnPassant.back() != -1)) {
             nuevaZobristKey ^= constantes::enPassant[historialEnPassant.back()];
         }
-    
+
 
 
     int salida = operaciones_bit::getSalida(jugada);
     int llegada = operaciones_bit::getLlegada(jugada);
     int tipo_de_pieza;
         tipo_de_pieza = obtenerTipoDePieza(salida);
-    
+
     //Necesitamos diferenciar entre tipo de pieza blanca y negra (cosa que el enum que tenemos
     // no hace) para poder obtener el índice correcto. Para lograr eso simplemente se suma 6
     // al tipo de pieza que se obtenga solo en el caso de que sea negra. Si es blanca queda
@@ -4164,7 +4426,7 @@ void Tablero::actualizarZobristKey(u_short jugada) {
                 piezaCapturada += 6;
             }
             nuevaZobristKey ^= constantes::zobristKeys[piezaCapturada][llegada - 1];
-       
+
     }
         //Se actualiza el hash para el peón que se captura en caso de que sea enpassant
     else if (tipoDeJugada == ENPASSANT || tipoDeJugada == ENPASSANTCHECK) {
@@ -4264,6 +4526,7 @@ void Tablero::actualizarZobristKey(u_short jugada) {
 
 
     zobrist = nuevaZobristKey;
+    agregueAlgoAlHistorialEP = false;
     contadorZobrist++;
     historialZobrist[contadorZobrist] = zobrist;
 }
@@ -4509,9 +4772,8 @@ void Tablero::configurarFen(std::string fen) {
     contadorJugadas = -1;
     enroques = std::stack<derechosDeEnroque>();
 
-    contadorMaterialBlancas = -1;
-    contadorMaterialNegras = -1;
-    contadorOcupacion = -1;
+/*    contadorMaterialBlancas = -1;
+    contadorMaterialNegras = -1;*/
 
 
     for (int k = 0; k < 12; k++) {
@@ -4535,26 +4797,31 @@ void Tablero::configurarFen(std::string fen) {
                 case 'Q':
                     bitboards[1] = operaciones_bit::setBit(bitboards[1], casillaActual, 1);
                     casillaActual--;
+                    damasBlancas++;
                     break;
 
                 case 'R':
                     bitboards[2] = operaciones_bit::setBit(bitboards[2], casillaActual, 1);
                     casillaActual--;
+                    torresBlancas++;
                     break;
 
                 case 'B':
                     bitboards[3] = operaciones_bit::setBit(bitboards[3], casillaActual, 1);
                     casillaActual--;
+                    alfilesBlancos++;
                     break;
 
                 case 'N':
                     bitboards[4] = operaciones_bit::setBit(bitboards[4], casillaActual, 1);
                     casillaActual--;
+                    caballosBlancos++;
                     break;
 
                 case 'P':
                     bitboards[5] = operaciones_bit::setBit(bitboards[5], casillaActual, 1);
                     casillaActual--;
+                    peonesBlancos++;
                     break;
 
 
@@ -4566,26 +4833,31 @@ void Tablero::configurarFen(std::string fen) {
                 case 'q':
                     bitboards[7] = operaciones_bit::setBit(bitboards[7], casillaActual, 1);
                     casillaActual--;
+                    damasNegras++;
                     break;
 
                 case 'r':
                     bitboards[8] = operaciones_bit::setBit(bitboards[8], casillaActual, 1);
                     casillaActual--;
+                    torresNegras++;
                     break;
 
                 case 'b':
                     bitboards[9] = operaciones_bit::setBit(bitboards[9], casillaActual, 1);
                     casillaActual--;
+                    alfilesNegros++;
                     break;
 
                 case 'n':
                     bitboards[10] = operaciones_bit::setBit(bitboards[10], casillaActual, 1);
                     casillaActual--;
+                    caballosNegros++;
                     break;
 
                 case 'p':
                     bitboards[11] = operaciones_bit::setBit(bitboards[11], casillaActual, 1);
                     casillaActual--;
+                    peonesNegros++;
                     break;
 
                 case '/':
@@ -4649,13 +4921,11 @@ void Tablero::configurarFen(std::string fen) {
     historialZobrist[contadorZobrist] = zobrist;
 
     //Se calcula el valor del material y se agrega al historial
-    contadorMaterialBlancas = 0;
+/*    contadorMaterialBlancas = 0;
     contadorMaterialNegras = 0;
     historial_material_blancas[contadorMaterialBlancas] = std::make_pair(valoracionMaterial(0), 0);
-    historial_material_negras[contadorMaterialNegras] = std::make_pair(valoracionMaterial(1), 0);
-    contadorOcupacion = 0;
-    historial_ocupacion_blancas[contadorOcupacion] = calcularOcupacion(0);
-    historial_ocupacion_negras[contadorOcupacion] = calcularOcupacion(1);
+    historial_material_negras[contadorMaterialNegras] = std::make_pair(valoracionMaterial(1), 0);*/
+    calcularOcupacion();
 
 
 }
@@ -4710,6 +4980,7 @@ std::string Tablero::generarJugadaString(int piezaAPromover, int salida, int lle
     std::string jugadaString = "";
     jugadaString += constantes::NumeroACasilla[salida];
     jugadaString += constantes::NumeroACasilla[llegada];
+    jugadaString += constantes::NumeroACasilla[llegada];
 
     switch (piezaAPromover) {
         case DAMA:
@@ -4750,6 +5021,7 @@ void Tablero::movimientoNulo() {
     historialEnPassant.push_back(-1);
     contadorZobrist++;
     historialZobrist[contadorZobrist] = zobrist;
+
 
 }
 
@@ -4936,4 +5208,41 @@ void Tablero::calcularMasksPeonesPasados() {
         maskDelPeon = (columnaDelPeon | columnaPeonIzqBitboard | columnaPeonDerBitboard) >> filaDelPeon;
         masksPeonesPasados[96 - i] = maskDelPeon;
     }
+}
+
+void Tablero::actualizarCantPiezas(int tipoDePieza, bool agregando){
+
+    int agregandoInt;
+    agregando ? agregandoInt = 1 : agregandoInt = 0;
+    if (tipoDePieza == 1){
+        damasBlancas += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 2){
+        torresBlancas += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 3){
+        alfilesBlancos += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 4){
+        caballosBlancos += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 5){
+        peonesBlancos += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 7){
+        damasNegras += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 8){
+        torresNegras += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 9){
+        alfilesNegros += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 10){
+        caballosNegros += -1 + (2*agregandoInt);
+    }
+    else if (tipoDePieza == 11){
+        peonesNegros += -1 + (2*agregandoInt);
+    }
+
 }

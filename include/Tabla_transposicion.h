@@ -40,7 +40,7 @@ public:
 
     Tablero* tablero;
     int tamanoTabla;
-    entrada* tabla[419430];
+    entrada tabla[4*419430];
 
 
 

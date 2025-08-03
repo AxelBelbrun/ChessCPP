@@ -11,11 +11,73 @@
 #include <chrono>
 class Motor {
 public:
+
+    float maxEval2 = 0;
+    // En algún lugar global o como constantes de tu clase Board/Evaluation
+    const int peso_fase_caballo = 1;   // Caballo
+    const int peso_fase_alfil = 1;   // Alfil
+    const int peso_fase_torre   = 2;   // Torre (vale más porque es más fuerte)
+    const int peso_fase_dama  = 4;   // Dama (la más valiosa en el medio juego)
+
+// Define la Fase Máxima posible (todas las piezas al inicio)
+// 2 Caballos, 2 Alfiles, 2 Torres, 1 Dama por bando. Suma de puntos por bando:
+// (2*1) + (2*1) + (2*2) + (1*4) = 2 + 2 + 4 + 4 = 12
+// Multiplicado por 2 bandos: 12 * 2 = 24
+    const int fase_maxima = (2 * peso_fase_caballo) +
+                          (2 * peso_fase_alfil) +
+                          (2 * peso_fase_torre) +
+                          (1 * peso_fase_dama); // Esto es por UN bando
+    const int fase_maxima_total = fase_maxima * 2;
+    float pesoMaterialPeonM = 1;
+    float pesoMaterialPeonF = 1.3;
+    float pesoMaterialDamaM = 1;
+    float pesoMaterialDamaF = 0.9;
+    float pesoMaterialTorreM = 1;
+    float pesoMaterialTorreF = 1.1;
+    int exitosNull = 0;
+    float pesoOcupacionPeonM = 1.0;
+    float pesoOcupacionPeonF = 2.0;
+
+
+    float pesoOcupacionCaballoM = 1.0;
+    float pesoOcupacionCaballoF = 0.5;
+
+
+    float pesoOcupacionAlfilM = 1.0;
+    float pesoOcupacionAlfilF = 0.7;
+
+
+    float pesoOcupacionTorreM = 1.0;
+    float pesoOcupacionTorreF = 1.2;
+
+
+    float pesoOcupacionDamaM = 1.0;
+    float pesoOcupacionDamaF = 0.8;
+
+    float premioEnroqueM = 1;
+    float premioEnroqueF = 0.2;
+
+    float castigoPeonBloqueadoM = 1;
+    float castigoPeonBloqueadoF = 2.5;
+
+    float seguridadDelReyM = 1;
+    float seguridadDelReyF = 0.1;
+
+    float movilidadM = 1;
+    float movilidadF = 0.8;
+
+    bool primerMovimiento;
+
+
+
     Motor();
+    int calcularFaseDeJuego(Tablero* tablero);
     bool tablaInicializada = false;
     int incrementos = 0;
     int porcentajeTabla();
-     Tabla_transposicion* TT;
+    int misses = 0;
+
+    Tabla_transposicion* TT;
      int hashHits = 0;
     int totalMoves = 0;
     int totalPositions = 0;
@@ -34,7 +96,9 @@ public:
     u_short bestMove;
     float quiescence(Tablero* tablero, float alfa, float beta);
      float valoracion(Tablero* tablero);
+/*
      float valoracionMaterial(Tablero* tablero);
+*/
     U64 perft(int profundidad, Tablero* tablero);
      float valoracionMovilidad(Tablero* tablero);
      float contarMaterialSinPeones(Tablero* tablero);

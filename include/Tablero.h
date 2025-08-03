@@ -66,6 +66,16 @@ public:
         bitmask derechosAnteriores;
         int numeroDeMovimiento;
     };
+    struct cambiosOcupacion {
+        cambiosOcupacion() {
+            cambio1 = std::make_pair(-1, -1);
+            cambio2 = std::make_pair(-1, -1);
+            cambio3 = std::make_pair(-1, -1);
+        }
+        std::pair<int, int> cambio1 = std::make_pair(-1, -1);
+        std::pair<int, int> cambio2 = std::make_pair(-1, -1);
+        std::pair<int, int> cambio3 = std::make_pair(-1, -1);
+    };
 
     int detectarPeonesPasados(int turno);
     int numeroDeJugadas;
@@ -116,7 +126,23 @@ public:
     };
     modificacionBitboard historialBitboards[512];
     int contadorHistorialBitboards = -1;
+    int caballosNegros = 0;
+    int caballosBlancos = 0;
+    int damasNegras = 0;
+    int damasBlancas = 0;
+    int peonesNegros = 0;
+    int peonesBlancos = 0;
+    int alfilesNegros = 0;
+    int alfilesBlancos = 0;
+    int torresNegras = 0;
+    int torresBlancas = 0;
 
+    //Los indices 12 y 13 son para la ocupacion del rey blanco y negro en final respectivamente
+    int ocupacionPiezas[14];
+    cambiosOcupacion historialCambiosOcupacion[512];
+
+
+    void actualizarCantPiezas(int tipoDePieza, bool agregando);
     void setTurno(int turno);
     bool moverPieza(int salida, int llegada, int tipoDeJugada);
     void deshacerMovimiento();
@@ -155,20 +181,21 @@ public:
     std::vector<int> historialEnPassant;
     /*std::vector<float> historialMaterialBlancas;
     std::vector<float> historialMaterialNegras;*/
-    std::pair<int,int> historial_material_negras[50];
+    void inicializarContadoresDeMovimientos();
+    bool agregueAlgoAlHistorialEP = false;
+/*    std::pair<int,int> historial_material_negras[50];
     std::pair<int,int> historial_material_blancas[50];
     int modif_hist_material_negras = 0;
     int modif_hist_material_blancas = 0;
     int contadorMaterialNegras = -1;
-    int contadorMaterialBlancas = -1;
+    int contadorMaterialBlancas = -1;*/
 
 
 
     /*std::vector<float> historialOcupacionBlancas;
     std::vector<float> historialOcupacionNegras;*/
-    float historial_ocupacion_negras[512];
-    float historial_ocupacion_blancas[512];
-    int contadorOcupacion = -1;
+/*    float historial_ocupacion_negras[512];
+    float historial_ocupacion_blancas[512];*/
 /*
     std::vector<U64> historialDePosiciones;
 */
@@ -183,16 +210,18 @@ public:
     std::pair<int,int> movimientosAlfilBlancoF;
     std::pair<int,int> movimientosAlfilNegroC;
     std::pair<int,int> movimientosAlfilNegroF;
-    float calcularOcupacion( int color);
-    float calcularOcupacionPeon(int color);
-    float calcularOcupacionCaballo(int color);
-    float calcularOcupacionAlfil( int color);
-    float calcularOcupacionTorre( int color);
-    float calcularOcupacionReina( int color);
-    float calcularOcupacionRey( int color);
+    void calcularOcupacion();
+    void calcularOcupacionPeon(int color);
+    void calcularOcupacionCaballo(int color);
+    void calcularOcupacionAlfil( int color);
+    void calcularOcupacionTorre( int color);
+    void calcularOcupacionReina( int color);
+    void calcularOcupacionRey( int color);
     void actualizarOcupacion(u_short jugada);
     int cantPiezas(int color);
+/*
     void actualizarMaterial(u_short jugada);
+*/
     void actualizarCantMovesPiezasMenores(u_short jugada, bool haciendoMovimiento);
     void imprimirTablero();
     bool esUnaPromocion(u_short jugada);
