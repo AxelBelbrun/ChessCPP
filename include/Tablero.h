@@ -248,7 +248,7 @@ public:
     bool chequearEnroqueCorto();
     bool chequearEnroqueLargo();
     bool enrocar(u_short jugada);
-    bool moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
+    void moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
     bool enrocarTrusted(u_short jugada);
     Caballo* caballo;
     Rey* rey;

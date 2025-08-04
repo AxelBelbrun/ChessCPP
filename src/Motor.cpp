@@ -304,29 +304,13 @@ U64 Motor::perft(int depth, Tablero *tablero) {
         int casillaSalida = operaciones_bit::getSalida(move);
         int casillaLlegada = operaciones_bit::getLlegada(move);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(move);
-        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
-
+        if (tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada)) {
             nodes += perft(depth - 1, tablero);
             ply--;
-           /* if((tablero-> _jugadas.size()) != (tablero->historialEnPassant.size())){
-                cout << "cantidad distinta de jugadas y enpassant" << endl;
-                for(auto x: tablero->_jugadas){
-                    std::cout << x << std::endl;
-                }
-                exit(0);
-            }*/
             tablero->deshacerMovimiento();
-            /*U64 clave2 = tablero-> zobrist;
-            if(clave1 != clave2){
-                cout << "Zobrist no se actualizó correctamente" << endl;
-                for (auto x: tablero->jugadas){
-                    std::cout << x << std::endl;
-                }
-                cout << move << endl;
-                exit(0);
-            }*/
-        }
+            }
     }
+
 
     tablero->cantMovesGenerados[ply] = -1;
 
@@ -603,15 +587,15 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
     nodosBusqueda++;
     index_repeticion++;
     tabla_de_repeticiones[index_repeticion] = clave;
-    if(nodosBusqueda == 2048){
-        nodosBusqueda = 0;
-        auto timeEnd = std::chrono::steady_clock::now();
-        auto time = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart).count();
-        if(time > tiempoDisponible){
-            stopSearch = true;
-            return 0;
-        }
-    }
+    // if(nodosBusqueda == 2048){
+    //     nodosBusqueda = 0;
+    //     auto timeEnd = std::chrono::steady_clock::now();
+    //     auto time = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart).count();
+    //     if(time > tiempoDisponible){
+    //         stopSearch = true;
+    //         return 0;
+    //     }
+    // }
     if (ply > 255) {
         return valoracion(tablero);
     }
@@ -717,7 +701,7 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
         int casillaSalida = operaciones_bit::getSalida(movimiento);
         int casillaLlegada = operaciones_bit::getLlegada(movimiento);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
-        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
+        if (true) {
             float eval;
             tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
             // LMR: reducir profundidad en jugadas poco prometedoras
@@ -741,10 +725,10 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
             ply--;
             index_repeticion--;
             tablero->deshacerMovimiento();
-            if (stopSearch) {
-                tablero->cantMovesGenerados[ply] = -1;
-                return 0;
-                }
+            // if (stopSearch) {
+            //     tablero->cantMovesGenerados[ply] = -1;
+            //     return 0;
+            //     }
             cantidadDeMovesBuscados++;
 
             if (eval > maxEval) {
@@ -868,7 +852,7 @@ float Motor::quiescence(Tablero *tablero, float alfa, float beta) {
         int casillaSalida = operaciones_bit::getSalida(movimiento);
         int casillaLlegada = operaciones_bit::getLlegada(movimiento);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
-        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
+        if (true) {
             tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
             float score = -quiescence(tablero, -beta, -alfa);
             ply--;

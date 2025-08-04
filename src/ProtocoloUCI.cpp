@@ -279,7 +279,7 @@ void ProtocoloUCI:: inputGo(string input) {
     u_short mejorJugadaTemporal;
     int plySeguidosComoMejorJugada = 0;
 
-    while (i < 10) {
+    while (i < 8) {
         if (i == 1) {
             motor->bestMove = 0;
 
@@ -336,9 +336,9 @@ void ProtocoloUCI:: inputGo(string input) {
                   << ", Tiempo transcurrido: " << tiempoTranscurrido
                   << " / " << motor->tiempoDisponible << " ms" << std::endl;*/
 
-        if (tiempoTranscurrido >= motor->tiempoDisponible) {
-            break;
-        }
+        // if (tiempoTranscurrido >= motor->tiempoDisponible) {
+        //     break;
+        // }
 
         ++i;
         prof = i;
