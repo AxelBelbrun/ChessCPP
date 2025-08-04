@@ -366,7 +366,14 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
                                                 posicionASetear.size() - 1);
         int i = 0;
         while (i < jugadas.size()) {
-            string jugadaString = jugadas.substr(i, 4);
+            string jugadaString;
+            if((i+4 < jugadas.size()) && (jugadas.at(i+4) != ' ')){
+                jugadaString = jugadas.substr(i, 5);
+                i++;
+            }
+            else{
+                jugadaString = jugadas.substr(i, 4);
+            }
             generar_movimientos(_turno, 0);
             for (int j = 0; j <= cantMovesGenerados[0]; j++) {
                 u_short move = movimientos_generados[0][j];
@@ -589,6 +596,11 @@ void Tablero::deshacerUltimosRegistros() {//Eliminamos el último elemento de to
         modif_hist_material_negras = historial_material_negras[contadorMaterialNegras].second;
     }*/
 };
+
+/*bool Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
+    if (tipoDeJugada== CASTLING) {
+
+}*/
 
 bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     u_short aRealizar = operaciones_bit::crearJugada(salida, llegada, tipo_jugada);
@@ -2468,14 +2480,11 @@ bool Tablero::reyPropioEnJaque(int color) {
     if (color == 0) {
         U64 bitboardDelRey = bitboards[0];
 
-        U64 movimientosPosibles = bitboard_movimientos_torre_blanca(bitboardDelRey);
-        if ((movimientosPosibles & bitboards[7]) || (movimientosPosibles & bitboards[8])) {
+        U64 movimientosPosibles = bitboard_movimientos_dama_blanca(bitboardDelRey);
+        if ((movimientosPosibles & bitboards[7])) {
             return true;
         }
-        movimientosPosibles = bitboard_movimientos_alfil_blanco(bitboardDelRey);
-        if ((movimientosPosibles & bitboards[7]) || (movimientosPosibles & bitboards[9])) {
-            return true;
-        }
+
 
         movimientosPosibles = bitboard_movimientos_caballo_blanco(bitboardDelRey);
         if (movimientosPosibles & bitboards[10]) {
@@ -2527,12 +2536,8 @@ bool Tablero::reyPropioEnJaque(int color) {
 
         U64 bitboardDelRey = bitboards[6];
 
-        U64 movimientosPosibles = bitboard_movimientos_torre_negra(bitboardDelRey);
-        if ((movimientosPosibles & bitboards[1]) || (movimientosPosibles & bitboards[2])) {
-            return true;
-        }
-        movimientosPosibles = bitboard_movimientos_alfil_negro(bitboardDelRey);
-        if ((movimientosPosibles & bitboards[1]) || (movimientosPosibles & bitboards[3])) {
+        U64 movimientosPosibles = bitboard_movimientos_dama_negra(bitboardDelRey);
+        if ((movimientosPosibles & bitboards[1])) {
             return true;
         }
 
@@ -2988,80 +2993,9 @@ bool Tablero::enrocar(u_short jugada) {
     return false;
 }
 
-/*
-void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
-    U64 salidaBitboard = operaciones_bit::setBit(0L, salida, 1);
-    U64 llegadaBitboard = operaciones_bit::setBit(0L, llegada, 1);
-    u_short aRealizar = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
 
 
-    int tipoDePieza = obtenerTipoDePieza(salida);
-    if (tipoDePieza == REY) {
-        if (salida == 4 && llegada == 2) {
-            enrocar(45123);
-            return;//Enroque corto codificado como u_short
-        } else if (salida == 4 && llegada == 6) {
-            enrocar(45379);
 
-            return;
-        } else if (salida == 60 && llegada == 58) {
-            enrocar(48763);
-
-            return;
-        } else if (salida == 60 && llegada == 62) {
-            enrocar(49019);
-
-            return;
-        }
-    }
-
-
-    actualizarMaterial(aRealizar);
-    actualizarOcupacion(aRealizar);
-    actualizarZobristKey(aRealizar);
-    /// Momentánemente la función de evaluación no utiliza la cantidad
-    /// de movimientos realizados por piezas menores, por lo que no vale la pena
-    /// realizar el cálculo.
-    //actualizarCantMovesPiezasMenores(aRealizar, true);
-*/
-/*
-    historialDePosiciones.push_back(zobrist);
-*//*
-
-
-    for (int k = 0; k < 12; k++) {
-
-        if ((bitboards[k] & salidaBitboard) > 0) {
-            bitboards[k] = operaciones_bit::setBit(bitboards[k], salida, 0);
-            bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 1);
-
-        } else if ((bitboards[k] & llegadaBitboard) > 0) {
-            bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 0);
-
-        }
-    }
-    u_short jugada = operaciones_bit::crearJugada(salida, llegada, 0);
-    _jugadas.push_back(jugada);
-    historialPosiciones.push_back(bitboards);
-   */
-/* enroqueCortoBlanco.push_back(enroqueCortoBlanco.back());
-    enroqueCortoNegro.push_back(enroqueCortoNegro.back());
-    enroqueLargoNegro.push_back(enroqueLargoNegro.back());
-    enroqueLargoBlanco.push_back(enroqueLargoBlanco.back());*//*
-
-
-    if (tipoDeJugada == CHECKMATE) {
-        if (_turno == 0) {
-            ganoBlanco = true;
-        } else {
-            ganoNegro = true;
-        }
-
-    }
-    cambiarTurno();
-
-}
-*/
 
 void Tablero::cambiarTurno() {
     if (_turno == 0) {
@@ -4979,7 +4913,6 @@ std::string Tablero::formatearJugada(u_short jugada) {
 std::string Tablero::generarJugadaString(int piezaAPromover, int salida, int llegada) {
     std::string jugadaString = "";
     jugadaString += constantes::NumeroACasilla[salida];
-    jugadaString += constantes::NumeroACasilla[llegada];
     jugadaString += constantes::NumeroACasilla[llegada];
 
     switch (piezaAPromover) {

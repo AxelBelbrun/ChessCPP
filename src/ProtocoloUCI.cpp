@@ -142,7 +142,10 @@ void ProtocoloUCI:: inputUCINewGame() {
 void ProtocoloUCI:: inputPosition(string input) {
 
 
-    if (input.std::string::find("moves") != std::string::npos) {
+
+
+
+    /*if (input.std::string::find("moves") != std::string::npos) {
         //Si aún no existe un tablero con una posición inicial
         if(!posicionSeteada){
             //Si nos pasan un fen, se recorta la parte de "moves" en adelante para no entrar en conflicto
@@ -179,12 +182,12 @@ void ProtocoloUCI:: inputPosition(string input) {
             u_short move = tablero->movimientos_generados[0][j];
             if(jugada == formatearJugada(move)){
                 tablero->moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move), operaciones_bit::getTipoDeJugada(move));
-/*
+*//*
                 motor->TT->limpiarTabla();
-*/
-/*
+*//*
+*//*
                 tablero->imprimirTablero();
-*/
+*//*
                 tablero->cantMovesGenerados[0] = -1;
 
                 if(tablero->ganoNegro){
@@ -224,8 +227,14 @@ void ProtocoloUCI:: inputPosition(string input) {
             motor->TT->asignarTablero(tablero);
             posicionSeteada = true;
         }
+    }*/
 
-    }
+
+        delete tablero;
+        tablero = new Tablero(input);
+        motor->TT->asignarTablero(tablero);
+        posicionSeteada = true;
+
 }
 
 void ProtocoloUCI:: inputGo(string input) {
