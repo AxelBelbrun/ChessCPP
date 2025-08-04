@@ -122,13 +122,13 @@ tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operacio
                     if(tablero->esJaque(
                             alfil -> generar_movimientos_legales(bitboardTemp, piezasPropias & (~peon), piezasRivales, 0), tablero->_turno)) {
                         tablero->cantMovesGenerados[ply]++;
-tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3, LSB + 8, PROMOTIONCHECK);
+tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_biENPASSANTt::crearJugada(3, LSB + 8, PROMOTIONCHECK);
                     }
                     else{
                         tablero->cantMovesGenerados[ply]++;
 tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(3, LSB + 8, PROMOTION);
                     }
-
+ENPASSANT
                     if(tablero->esJaque(
                             caballo->generar_movimientos_legales(bitboardTemp, piezasPropias & (~peon), piezasRivales,
                                                                  0), tablero->_turno)) {
@@ -150,7 +150,7 @@ tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operacio
             else if ((((peon >> 8) & (piezasPropias | piezasRivales)) == 0) && (tablero->_turno == 1)) {
                 if ((peon & fila2) > 0) {
                     U64 bitboardTemp = operaciones_bit::setBit(0L, LSB - 8, 1);
-                    if(tablero->esJaque(
+                    if(tablero->esJaque(ENPASSANT
                             dama->generar_movimientos_legales(bitboardTemp, piezasPropias & (~peon), piezasRivales, 1), tablero->_turno)) {
                         tablero->cantMovesGenerados[ply]++;
 tablero->movimientos_generados[ply][tablero->cantMovesGenerados[ply]] = operaciones_bit::crearJugada(1, LSB - 8, PROMOTIONCHECK);

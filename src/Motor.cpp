@@ -304,18 +304,34 @@ U64 Motor::perft(int depth, Tablero *tablero) {
         int casillaSalida = operaciones_bit::getSalida(move);
         int casillaLlegada = operaciones_bit::getLlegada(move);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(move);
-        if (tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada)) {
+        auto bitboardsOriginales = tablero->bitboards;
+
+        tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada);
+        if (!tablero->reyPropioEnJaque(tablero->_turno)) {
+            tablero->cambiarTurno();
             nodes += perft(depth - 1, tablero);
             ply--;
-            tablero->deshacerMovimiento();
-            }
-    }
 
+            tablero->derechosEnroqueAux = 0;
+            tablero->deshacerEnroque();
+
+            tablero->cambiarTurno();
+
+        }
+        tablero->contadorJugadas--;
+
+        tablero->numeroDeJugadas--;
+
+
+        tablero->bitboards = bitboardsOriginales;
+
+    }
 
     tablero->cantMovesGenerados[ply] = -1;
 
-
     return nodes;
+
+
 }
 
 

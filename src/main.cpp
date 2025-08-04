@@ -23,7 +23,7 @@ int main() {
     //     return 0;
     // }
 
-    Tablero* t = new Tablero("position startpos");
+    Tablero* t = new Tablero("position fen r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq");
      Motor* m = new Motor();
     // t->generar_movimientos(0, 0);
     // for (auto x: t->movimientos_generados[0]) {
@@ -43,6 +43,7 @@ int main() {
     cout << "Ocupacion dama blanco:" << t->ocupacionPiezas[1] << endl;
     cout << "Ocupacion dama negro:" << t->ocupacionPiezas[7] << endl;
     cout << "Ocupacion torre blanco:" << t->ocupacionPiezas[2] << endl;
+    cout << "Ocupacion torre negro:" << t->ocupacionPiezas[8] << endl;
     cout << "Ocupacion torre negro:" << t->ocupacionPiezas[8] << endl;
     cout << "Ocupacion alfil blanco:" << t->ocupacionPiezas[3] << endl;
     cout << "Ocupacion alfil negro:" << t->ocupacionPiezas[9] << endl;

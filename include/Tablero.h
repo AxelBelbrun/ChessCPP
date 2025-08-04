@@ -249,7 +249,7 @@ public:
     bool chequearEnroqueLargo();
     bool enrocar(u_short jugada);
     void moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
-    bool enrocarTrusted(u_short jugada);
+    void enrocarTrusted(u_short jugada);
     Caballo* caballo;
     Rey* rey;
     Peon* peon;
