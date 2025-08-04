@@ -597,10 +597,111 @@ void Tablero::deshacerUltimosRegistros() {//Eliminamos el último elemento de to
     }*/
 };
 
-/*bool Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
+bool Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
+    u_short jugada = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
+    std::vector<U64> bitboardsOriginales = bitboards;
     if (tipoDeJugada== CASTLING) {
+        enrocarTrusted(jugada);
+    }
+    else if (tipoDeJugada == ENPASSANT) {
 
-}*/
+        if (_turno == 0) {
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], llegada, 1);
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], salida, 0);
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], llegada - 8, 0);
+        } else {
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], llegada, 1);
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], salida, 0);
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], llegada + 8, 0);
+        }
+    }
+    else if (tipoDeJugada == PROMOTION) {
+        if (_turno == 0) {
+            salida = llegada - 8;
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], salida, 0);
+        }
+        else {
+            salida = llegada + 8;
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], salida, 0);
+        }
+        bitboards[tipoDePieza(salida)] = operaciones_bit::setBit(bitboards[tipoDePieza(salida)], llegada, 1);
+    }
+    else if (tipoDeJugada == PROMOTIONIZQ) {
+        U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
+
+        if (_turno == 0) {
+            salida = llegada - 9;
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], salida, 0);
+            for (int i = 7; i < 11; i++){
+                if(bitboards[i] & bitboardAtaque){
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
+            }
+        }
+        else {
+            salida = llegada + 9;
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], salida, 0);
+            for(int i = 1; i < 5; i++){
+                if(bitboards[i] & bitboardAtaque){
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
+            }
+        }
+        bitboards[tipoDePieza(salida)] = operaciones_bit::setBit(bitboards[tipoDePieza(salida)], llegada, 1);
+    }
+    else if (tipoDeJugada == PROMOTIONDER) {
+        U64 bitboardAtaque = operaciones_bit::setBit(0L, llegada, 1);
+
+        if (_turno == 0) {
+            salida = llegada - 7;
+            bitboards[PEON_BLANCO] = operaciones_bit::setBit(bitboards[PEON_BLANCO], salida, 0);
+            for (int i = 7; i < 11; i++){
+                if(bitboards[i] & bitboardAtaque){
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
+            }
+        }
+        else {
+            salida = llegada + 7;
+            bitboards[PEON_NEGRO] = operaciones_bit::setBit(bitboards[PEON_NEGRO], salida, 0);
+            for(int i = 1; i < 5; i++){
+                if(bitboards[i] & bitboardAtaque){
+                    bitboards[i] = operaciones_bit::setBit(bitboards[i], llegada, 0);
+                    break;
+                }
+            }
+        }
+        bitboards[tipoDePieza(salida)] = operaciones_bit::setBit(bitboards[tipoDePieza(salida)], llegada, 1);
+    }
+    else {
+        U64 salidaBitboard = operaciones_bit::setBit(0L, salida, 1);
+        U64 llegadaBitboard = operaciones_bit::setBit(0L, llegada, 1);
+        for (int k = 0; k < 12; k++) {
+
+            if ((bitboards[k] & salidaBitboard) > 0) {
+
+                bitboards[k] = operaciones_bit::setBit(bitboards[k], salida, 0);
+
+                bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 1);
+
+            } else if ((bitboards[k] & llegadaBitboard) > 0) {
+                bitboards[k] = operaciones_bit::setBit(bitboards[k], llegada, 0);
+
+            }
+        }
+    }
+
+    bool res = (reyPropioEnJaque(1 - _turno));
+
+    bitboards = bitboardsOriginales;
+
+    return res;
+}
+
+
 
 bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
     u_short aRealizar = operaciones_bit::crearJugada(salida, llegada, tipo_jugada);
@@ -2793,9 +2894,39 @@ bool Tablero::chequearEnroqueLargo() {
     return false;
 }
 
+
+bool Tablero::enrocarTrusted(u_short jugada) {
+    int casillaDeLlegada = operaciones_bit::getLlegada(jugada);
+    if (casillaDeLlegada == 2) {
+        bitboards[0] = operaciones_bit::setBit(bitboards[0], 4, 0);
+        bitboards[0] = operaciones_bit::setBit(bitboards[0], 2, 1);
+        bitboards[2] = operaciones_bit::setBit(bitboards[2], 1, 0);
+        bitboards[2] = operaciones_bit::setBit(bitboards[2], 3, 1);
+    }
+    else if (casillaDeLlegada == 6) {
+        bitboards[0] = operaciones_bit::setBit(bitboards[0], 4, 0);
+        bitboards[0] = operaciones_bit::setBit(bitboards[0], 6, 1);
+        bitboards[2] = operaciones_bit::setBit(bitboards[2], 8, 0);
+        bitboards[2] = operaciones_bit::setBit(bitboards[2], 5, 1);
+    }
+    else if (casillaDeLlegada == 58) {
+        bitboards[6] = operaciones_bit::setBit(bitboards[6], 60, 0);
+        bitboards[6] = operaciones_bit::setBit(bitboards[6], 58, 1);
+        bitboards[8] = operaciones_bit::setBit(bitboards[8], 57, 0);
+        bitboards[8] = operaciones_bit::setBit(bitboards[8], 59, 1);
+    }
+    else {
+        bitboards[6] = operaciones_bit::setBit(bitboards[6], 60, 0);
+        bitboards[6] = operaciones_bit::setBit(bitboards[6], 62, 1);
+        bitboards[8] = operaciones_bit::setBit(bitboards[8], 64, 0);
+        bitboards[8] = operaciones_bit::setBit(bitboards[8], 61, 1);
+    }
+}
+
+
 bool Tablero::enrocar(u_short jugada) {
 
-    if (operaciones_bit::getLlegada(jugada) == 2 && chequearEnroqueCorto()) {
+    if (operaciones_bit::getLlegada(jugada) == 2) {
 /*
         actualizarMaterial(jugada);
 */
@@ -2844,7 +2975,7 @@ bool Tablero::enrocar(u_short jugada) {
 
         return true;
 
-    } else if (operaciones_bit::getLlegada(jugada) == 6 && chequearEnroqueLargo()) {
+    }  if (operaciones_bit::getLlegada(jugada) == 6) {
 /*
         actualizarMaterial(jugada);
 */
@@ -2890,7 +3021,7 @@ bool Tablero::enrocar(u_short jugada) {
         exit(0);}*/
 
         return true;
-    } else if (operaciones_bit::getLlegada(jugada) == 58 && chequearEnroqueCorto()) {
+    }  if (operaciones_bit::getLlegada(jugada) == 58 ) {
 /*
         actualizarMaterial(jugada);
 */
@@ -2939,7 +3070,7 @@ bool Tablero::enrocar(u_short jugada) {
             cout << constantes::NumeroACasilla[operaciones_bit::getLlegada(jugada)] << endl;
         exit(0);}*/
         return true;
-    } else if (operaciones_bit::getLlegada(jugada) == 62 && chequearEnroqueLargo()) {
+    }  if (operaciones_bit::getLlegada(jugada) == 62 ) {
 /*
         actualizarMaterial(jugada);
 */

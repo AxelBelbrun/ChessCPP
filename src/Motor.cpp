@@ -300,8 +300,11 @@ U64 Motor::perft(int depth, Tablero *tablero) {
 */
     for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
         u_short move = tablero->movimientos_generados[ply][i];
-        if (tablero->moverPieza(operaciones_bit::getSalida(move), operaciones_bit::getLlegada(move),
-                                operaciones_bit::getTipoDeJugada(move))) {
+
+        int casillaSalida = operaciones_bit::getSalida(move);
+        int casillaLlegada = operaciones_bit::getLlegada(move);
+        int tipoDeJugada = operaciones_bit::getTipoDeJugada(move);
+        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
 
             nodes += perft(depth - 1, tablero);
             ply--;
@@ -711,9 +714,12 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
             // Si el valor estático + margen no supera alfa, podar
             if (evalEstatico + 150 <= alfa) continue;
         }
-        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
-                                operaciones_bit::getTipoDeJugada(movimiento))) {
+        int casillaSalida = operaciones_bit::getSalida(movimiento);
+        int casillaLlegada = operaciones_bit::getLlegada(movimiento);
+        int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
+        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
             float eval;
+            tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
             // LMR: reducir profundidad en jugadas poco prometedoras
             bool esCaptura = tablero->esCaptura(movimiento);
             bool esPromocion = tablero->esUnaPromocion(movimiento);
@@ -859,8 +865,11 @@ float Motor::quiescence(Tablero *tablero, float alfa, float beta) {
 
     for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
         u_short movimiento = tablero->movimientos_generados[ply][i];
-        if (tablero->moverPieza(operaciones_bit::getSalida(movimiento), operaciones_bit::getLlegada(movimiento),
-                                operaciones_bit::getTipoDeJugada(movimiento))) {
+        int casillaSalida = operaciones_bit::getSalida(movimiento);
+        int casillaLlegada = operaciones_bit::getLlegada(movimiento);
+        int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
+        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
+            tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
             float score = -quiescence(tablero, -beta, -alfa);
             ply--;
             tablero->deshacerMovimiento();
