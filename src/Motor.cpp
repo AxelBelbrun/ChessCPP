@@ -294,36 +294,32 @@ U64 Motor::perft(int depth, Tablero *tablero) {
 
     U64 nodes = 0;
     tablero->generar_movimientos(tablero->_turno, ply);
+/*    if(depth == 1) {
+        int res = tablero->cantMovesGenerados[ply];
+        return res;
+    }*/
 
 /*
     U64 clave1 = tablero-> zobrist;
 */
     for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
         u_short move = tablero->movimientos_generados[ply][i];
+        std::string p = tablero->formatearJugada(move);
 
         int casillaSalida = operaciones_bit::getSalida(move);
         int casillaLlegada = operaciones_bit::getLlegada(move);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(move);
         auto bitboardsOriginales = tablero->bitboards;
 
-        tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada);
-        if (!tablero->reyPropioEnJaque(tablero->_turno)) {
-            tablero->cambiarTurno();
+        if (tablero->moverPiezaTrusted(casillaSalida,casillaLlegada, tipoDeJugada)) {
+            tablero->moverPieza(casillaSalida,casillaLlegada,tipoDeJugada);
             nodes += perft(depth - 1, tablero);
             ply--;
+            tablero->deshacerMovimiento();
 
-            tablero->derechosEnroqueAux = 0;
-            tablero->deshacerEnroque();
-
-            tablero->cambiarTurno();
 
         }
-        tablero->contadorJugadas--;
 
-        tablero->numeroDeJugadas--;
-
-
-        tablero->bitboards = bitboardsOriginales;
 
     }
 
@@ -603,15 +599,15 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
     nodosBusqueda++;
     index_repeticion++;
     tabla_de_repeticiones[index_repeticion] = clave;
-    // if(nodosBusqueda == 2048){
-    //     nodosBusqueda = 0;
-    //     auto timeEnd = std::chrono::steady_clock::now();
-    //     auto time = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart).count();
-    //     if(time > tiempoDisponible){
-    //         stopSearch = true;
-    //         return 0;
-    //     }
-    // }
+     if(nodosBusqueda == 2048){
+         nodosBusqueda = 0;
+       auto timeEnd = std::chrono::steady_clock::now();
+         auto time = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart).count();
+         if(time > tiempoDisponible){
+             stopSearch = true;
+             return 0;
+         }
+     }
     if (ply > 255) {
         return valoracion(tablero);
     }
@@ -717,9 +713,9 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
         int casillaSalida = operaciones_bit::getSalida(movimiento);
         int casillaLlegada = operaciones_bit::getLlegada(movimiento);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
-        if (true) {
+        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
             float eval;
-            tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
+            bool prueba = tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
             // LMR: reducir profundidad en jugadas poco prometedoras
             bool esCaptura = tablero->esCaptura(movimiento);
             bool esPromocion = tablero->esUnaPromocion(movimiento);
@@ -741,10 +737,10 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
             ply--;
             index_repeticion--;
             tablero->deshacerMovimiento();
-            // if (stopSearch) {
-            //     tablero->cantMovesGenerados[ply] = -1;
-            //     return 0;
-            //     }
+             if (stopSearch) {
+                 tablero->cantMovesGenerados[ply] = -1;
+                 return 0;
+                 }
             cantidadDeMovesBuscados++;
 
             if (eval > maxEval) {
@@ -868,7 +864,7 @@ float Motor::quiescence(Tablero *tablero, float alfa, float beta) {
         int casillaSalida = operaciones_bit::getSalida(movimiento);
         int casillaLlegada = operaciones_bit::getLlegada(movimiento);
         int tipoDeJugada = operaciones_bit::getTipoDeJugada(movimiento);
-        if (true) {
+        if (tablero->moverPiezaTrusted(casillaSalida, casillaLlegada, tipoDeJugada)) {
             tablero->moverPieza(casillaSalida, casillaLlegada, tipoDeJugada);
             float score = -quiescence(tablero, -beta, -alfa);
             ply--;

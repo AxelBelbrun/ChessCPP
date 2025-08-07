@@ -126,8 +126,7 @@ void ProtocoloUCI:: comunicacionUCI() {
 
 void ProtocoloUCI:: inputUCINewGame() {
      motor = new Motor();
-     delete tablero;
-     tablero = new Tablero("position startpos");
+     tablero = new Tablero();
 
      motor->TT->asignarTablero(tablero);
      motor->tablaInicializada = true;
@@ -229,9 +228,7 @@ void ProtocoloUCI:: inputPosition(string input) {
         }
     }*/
 
-
-        delete tablero;
-        tablero = new Tablero(input);
+        tablero->actualizarTablero(input);
         motor->TT->asignarTablero(tablero);
         posicionSeteada = true;
 
@@ -279,7 +276,7 @@ void ProtocoloUCI:: inputGo(string input) {
     u_short mejorJugadaTemporal;
     int plySeguidosComoMejorJugada = 0;
 
-    while (i < 8) {
+    while (i < 50) {
         if (i == 1) {
             motor->bestMove = 0;
 
@@ -336,9 +333,9 @@ void ProtocoloUCI:: inputGo(string input) {
                   << ", Tiempo transcurrido: " << tiempoTranscurrido
                   << " / " << motor->tiempoDisponible << " ms" << std::endl;*/
 
-        // if (tiempoTranscurrido >= motor->tiempoDisponible) {
-        //     break;
-        // }
+       if (tiempoTranscurrido >= motor->tiempoDisponible) {
+             break;
+         }
 
         ++i;
         prof = i;
@@ -404,6 +401,7 @@ void ProtocoloUCI:: inputGo(string input) {
 
     //Antes de imprimir la jugada, se realiza en el tablero interno
     tablero->moverPieza(salida, llegada, tipoDeJugada);
+    tablero->imprimirTablero();
 /*
     tablero->imprimirTablero();
 */

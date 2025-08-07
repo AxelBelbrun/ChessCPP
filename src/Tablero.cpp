@@ -27,14 +27,17 @@ int ALFIL_NEGRO = ALFIL + 6;
 int CABALLO_BLANCO = CABALLO;
 int CABALLO_NEGRO = CABALLO + 6;
 
-Tablero::Tablero(std::string posicionASetear) {
+Tablero::Tablero() {
     generarTablasDeMovimientos();
+
+}
+void Tablero::actualizarTablero(std::string posicionASetear) {
     zobrist = 0;
     inicializarContadoresDeMovimientos();
     calcularMasksPeonesPasados();
     contadorZobrist = -1;
 
-
+    bitboards = {};
 
 
 
@@ -49,12 +52,22 @@ Tablero::Tablero(std::string posicionASetear) {
         setearPosicionDeFen(posicionASetear);
     }
 
+/*
     numeroDeJugadas = 0;
+*/
 
     // Inicializamos la zobrist key en 0, lo que denota que aún no
     // está seteada.
 
 
+
+}
+
+void Tablero::limpiarTablero() {
+
+    inicializarContadoresDeMovimientos();
+    enroques = stack<derechosDeEnroque>();
+    historialEnPassant = {};
 
 }
 
@@ -70,6 +83,9 @@ void Tablero::inicializarContadoresDeMovimientos() {
     for (int i = 0; i < 256; i++) {
         cantMovesGenerados[i] = -1;
     }
+    contadorZobrist = -1;
+    contadorJugadas = -1;
+    contadorHistorialBitboards = -1;
 }
 
 //Genera el bitboard de movimientos posibles para cada pieza no sliding en la casilla i
@@ -302,6 +318,9 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
     _turno = 0;
     enroques = stack<derechosDeEnroque>();
     enroques.push(derechosDeEnroque{0b1111, 0, -5});
+    contadorJugadas = -1;
+    contadorZobrist = -1;
+    contadorHistorialBitboards = -1;
 
     //bitboards es un vector que almacena los 12 bitboards que representan las historialPosiciones de
 //cada tipo de pieza en el tablero. El orden es el siguiente: rey, dama, torre, alfil, caballo, peon.
@@ -367,12 +386,15 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
         int i = 0;
         while (i < jugadas.size()) {
             string jugadaString;
-            if((i+4 < jugadas.size()) && (jugadas.at(i+4) != ' ')){
+            // Si hay al menos 5 caracteres y el 5to es una letra de promoción
+            if ((i + 4 < jugadas.size()) &&
+                (jugadas[i + 4] == 'q' || jugadas[i + 4] == 'r' ||
+                 jugadas[i + 4] == 'b' || jugadas[i + 4] == 'n')) {
                 jugadaString = jugadas.substr(i, 5);
-                i++;
-            }
-            else{
+                i += 6;
+            } else {
                 jugadaString = jugadas.substr(i, 4);
+                i += 5;
             }
             generar_movimientos(_turno, 0);
             for (int j = 0; j <= cantMovesGenerados[0]; j++) {
@@ -383,12 +405,15 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
                     break;
                 }
             }
+            imprimirTablero();
             cantMovesGenerados[0] = -1;
             contadorJugadas++;
-            i += 5;
         }
 
     }
+
+    numeroDeJugadas = 0;
+
 }
 
 
@@ -597,13 +622,14 @@ void Tablero::deshacerUltimosRegistros() {//Eliminamos el último elemento de to
     }*/
 };
 
-void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
+bool Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
     u_short jugada = operaciones_bit::crearJugada(salida, llegada, tipoDeJugada);
     derechosEnroqueAux = enroques.top().derechosActuales;
     numeroDeJugadas++;
+    auto bitboardsOriginales = bitboards;
     if (tipoDeJugada == CASTLING) {
         enrocarTrusted(jugada);
-        return;
+        
     }
     else if (tipoDeJugada == ENPASSANT){
         contadorJugadas++;
@@ -618,7 +644,6 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
         }
         jugadas[contadorJugadas] = jugada;
 
-        return;
     }
     else if (tipoDeJugada == PROMOTION) {
         contadorJugadas++;
@@ -639,7 +664,6 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
         bitboards[tipoDePieza] = operaciones_bit::setBit(bitboards[tipoDePieza], llegada, 1);
         jugadas[contadorJugadas] = jugada;
 
-        return;
 
     }
     else if (tipoDeJugada == PROMOTIONIZQ) {
@@ -674,7 +698,6 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
         bitboards[tipoDePieza] = operaciones_bit::setBit(bitboards[tipoDePieza], llegada, 1);
         jugadas[contadorJugadas] = jugada;
 
-        return;
 
     }
     else if (tipoDeJugada == PROMOTIONDER) {
@@ -710,7 +733,6 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
         bitboards[tipoDePieza] = operaciones_bit::setBit(bitboards[tipoDePieza], llegada, 1);
         jugadas[contadorJugadas] = jugada;
 
-        return;
 
     }
     else {
@@ -818,9 +840,27 @@ void Tablero::moverPiezaTrusted(int salida, int llegada, int tipoDeJugada) {
         jugadas[contadorJugadas] = jugada;
 
         }
+    
+    bool res = !reyPropioEnJaque(_turno);
 
 
 
+
+
+
+    derechosEnroqueAux = 0;
+    deshacerEnroque();
+    contadorJugadas--;
+
+    numeroDeJugadas--;
+    if (_turno == 0 && operaciones_bit::getTipoDeJugada(jugada) == CASTLING) {
+         enrocoNegras = false;
+    } else if ( _turno == 1 && operaciones_bit::getTipoDeJugada(jugada) == CASTLING) {
+         enrocoBlancas = false;
+    }
+    bitboards = bitboardsOriginales;
+
+    return res;
 }
 
 
@@ -869,11 +909,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         }
         jugadas[contadorJugadas] = aRealizar;
         historialEnPassant.push_back(-1);
-        if (reyPropioEnJaque(_turno)) {
-            cambiarTurno();
-            deshacerMovimiento();
-            return false;
-        }
+
 
         //Chequeamos si este movimiento da jaque al rival
         if (reyPropioEnJaque(1 - _turno)) {
@@ -987,11 +1023,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         jugadas[contadorJugadas] = aRealizar;
 
         historialEnPassant.push_back(-1);
-        if (reyPropioEnJaque(_turno)) {
-            cambiarTurno();
-            deshacerMovimiento();
-            return false;
-        }
+
 
         //Chequeamos si este movimiento da jaque al rival
         if (reyPropioEnJaque(1 - _turno)) {
@@ -1125,11 +1157,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         jugadas[contadorJugadas] = aRealizar;
 
         historialEnPassant.push_back(-1);
-        if (reyPropioEnJaque(_turno)) {
-            cambiarTurno();
-            deshacerMovimiento();
-            return false;
-        }
+
 
         //Chequeamos si este movimiento da jaque al rival
         if (reyPropioEnJaque(1 - _turno)) {
@@ -1267,11 +1295,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
 
         historialEnPassant.push_back(-1);
 
-        if (reyPropioEnJaque(_turno)) {
-            cambiarTurno();
-            deshacerMovimiento();
-            return false;
-        }
+
 
         //Chequeamos si este movimiento da jaque al rival
         if (reyPropioEnJaque(1 - _turno)) {
@@ -1468,11 +1492,7 @@ bool Tablero::moverPieza(int salida, int llegada, int tipo_jugada) {
         historialEnPassant.push_back(-1);
     }
 
-    if (reyPropioEnJaque(_turno)) {
-        cambiarTurno();
-        deshacerMovimiento();
-        return false;
-    }
+
 
     //Chequeamos si este movimiento da jaque al rival
     if (reyPropioEnJaque(1 - _turno)) {

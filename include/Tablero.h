@@ -36,7 +36,9 @@ enum tipoDePieza {
 class Tablero {
 
 public:
-    Tablero(std::string fen);
+    Tablero();
+    void actualizarTablero(std::string fen);
+    void limpiarTablero();
     U64 zobristKey();
     bool ganoBlanco = false;
     bool ganoNegro = false;
@@ -248,7 +250,7 @@ public:
     bool chequearEnroqueCorto();
     bool chequearEnroqueLargo();
     bool enrocar(u_short jugada);
-    void moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
+    bool moverPiezaTrusted(int salida, int llegada, int tipoDeJugada);
     void enrocarTrusted(u_short jugada);
     Caballo* caballo;
     Rey* rey;

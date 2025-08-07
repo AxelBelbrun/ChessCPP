@@ -1,3 +1,4 @@
+/*
 //
 // Created by axel on 22/05/24.
 //
@@ -65,10 +66,12 @@ double codigo_auxiliar:: meanSquareError(double k) {
 }
 
 void codigo_auxiliar:: actualizarParametros(std::vector<double>& gradientes, double rate, double epsilon) {
-    /*for (int i = 1; i < 6; i++) {
+    */
+/*for (int i = 1; i < 6; i++) {
         constantes::valorPieza[i] += gradientes[i - 1] * rate + epsilon;
         constantes::valorPieza[i + 6] -= gradientes[i - 1] * rate + epsilon;
-    }*/
+    }*//*
+
     for (int i = 0, j = 0; i < 48; i++, j++) {
         constantes::ocupacionPeon[j + 8] += gradientes[i] * rate + epsilon;
     }
@@ -90,20 +93,28 @@ void codigo_auxiliar:: actualizarParametros(std::vector<double>& gradientes, dou
     for (int i = 368, j = 0; i < 432; i++, j++) {
         constantes::ocupacionReyFinal[j] += gradientes[i] * rate + epsilon;
     }
+*/
 /*
     constantes::premioPorEnrocar += epsilon + rate * gradientes[432];
+*//*
+
 */
 /*
     constantes::castigoPorSacarDama += epsilon + rate * gradientes[454];
+*//*
+
 */
 /*
     constantes::castigoMultiplesMovimientos += epsilon + rate * gradientes[455];
+*//*
+
 */
 /*    constantes::castigoPeonBloqueado += epsilon + rate * gradientes[433];
     constantes::premioDesarrolloPiezaMenor += epsilon + rate * gradientes[434];
     constantes::premioEscudoDePeones += epsilon + rate * gradientes[435];
     constantes::castigoEnroqueSinEscudo += epsilon + rate * gradientes[436];
-    constantes::pesoMovilidad += epsilon + rate * gradientes[437];*/
+    constantes::pesoMovilidad += epsilon + rate * gradientes[437];*//*
+
 }
 
 
@@ -112,9 +123,11 @@ void codigo_auxiliar:: guardarParametros(){
     contador++;
     file.open("/home/axel/Documentos/parametros/iteracion" + std::to_string(contador) + ".txt");
     file << "Pesos de las piezas: " << std::endl;
-   /* for(int i = 0; i < 5; i++){
+   */
+/* for(int i = 0; i < 5; i++){
         file << constantes::valorPieza[i+1] << ", " << std::endl;
-    }*/
+    }*//*
+
     file << "Ocupacion peon blanco: " << std::endl;
 
     for(int i = 5; i < 69; i++){
@@ -145,20 +158,28 @@ void codigo_auxiliar:: guardarParametros(){
     for(int i = 389; i < 453; i++){
         file << constantes::ocupacionReyFinal[i - 389] << ", " << std::endl;
     }
+*/
 /*
     file << "Premio por enrocar: " << constantes::premioPorEnrocar << std::endl;
+*//*
+
 */
 /*
     file << "Castigo por sacar dama: " << constantes::castigoPorSacarDama << std::endl;
+*//*
+
 */
 /*
     file << "Castigo por multiples movimientos: " << constantes::castigoMultiplesMovimientos << std::endl;
+*//*
+
 */
 /*    file << "Castigo por peon bloqueado: " << constantes::castigoPeonBloqueado << std::endl;
     file << "Premio desarrollo pieza menor: " << constantes::premioDesarrolloPiezaMenor << std::endl;
     file << "Premio escudo de peones: " << constantes::premioEscudoDePeones << std::endl;
     file << "Castigo enroque sin escudo: " << constantes::castigoEnroqueSinEscudo << std::endl;
-    file << "Peso movilidad: " << constantes::pesoMovilidad << std::endl;*/
+    file << "Peso movilidad: " << constantes::pesoMovilidad << std::endl;*//*
+
 
 
     file.close();
@@ -166,9 +187,11 @@ void codigo_auxiliar:: guardarParametros(){
 
 std::vector<double> codigo_auxiliar:: obtenerParametros(){
     std:vector<double> parametros;
-    /*for(int i = 1; i < 6; i++){
+    */
+/*for(int i = 1; i < 6; i++){
         parametros.push_back(constantes::valorPieza[i]);
-    }*/
+    }*//*
+
     for(int i = 5; i < 69; i++){
         if(5 <= i && i <= 12){
             continue;
@@ -197,37 +220,51 @@ std::vector<double> codigo_auxiliar:: obtenerParametros(){
     for(int i = 389; i < 453; i++){
         parametros.push_back(constantes::ocupacionReyFinal[i - 389]);
     }
+*/
 /*
     parametros.push_back(constantes::premioPorEnrocar);
+*//*
+
 */
 /*
     parametros.push_back(constantes::castigoPorSacarDama);
+*//*
+
 */
 /*
     parametros.push_back(constantes::castigoMultiplesMovimientos);
-*/
-    /*parametros.push_back(constantes::castigoPeonBloqueado);
+*//*
+
+    */
+/*parametros.push_back(constantes::castigoPeonBloqueado);
     parametros.push_back(constantes::premioDesarrolloPiezaMenor);
     parametros.push_back(constantes::premioEscudoDePeones);
     parametros.push_back(constantes::castigoEnroqueSinEscudo);
-    parametros.push_back(constantes::pesoMovilidad);*/
+    parametros.push_back(constantes::pesoMovilidad);*//*
+
 
 
     return parametros;
 }
 std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double epsilon) {
+*/
 /*
     t->configurarFen(fen);
-*/
+*//*
+
     std::vector<double> gradiente;
     std::vector<double> parametros = obtenerParametros();
     int k;
-   /* if(t->_turno == 0){
+   */
+/* if(t->_turno == 0){
         k = 1;
-    }*/
+    }*//*
+
+*/
 /*    else{
         k = -1;
-    }*/
+    }*//*
+
     for (int i = 0; i < parametros.size(); i++) {
 
         if (i < 5) {
@@ -247,7 +284,8 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
             constantes::ocupacionReyMedioJuego[i - 325] += epsilon;
         } else if (i < 453 && i >= 389) {
             constantes::ocupacionReyFinal[i - 389] += epsilon;
-        } /*else if (i == 453) {
+        } */
+/*else if (i == 453) {
                 constantes::premioPorEnrocar += epsilon;
             } else if (i == 454) {
                 constantes::castigoPorSacarDama += epsilon;
@@ -261,11 +299,14 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
                 constantes::premioEscudoDePeones += epsilon;
             } else if (i == 459) {
                 constantes::castigoEnroqueSinEscudo += epsilon;
-            }*/
+            }*//*
 
+
+*/
 /*
         double val1 = k * m->quiescence(t, -500000, 500000);
-*/
+*//*
+
 
 
         if (i < 5) {
@@ -285,7 +326,8 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
             constantes::ocupacionReyMedioJuego[i - 325] -= 2 * epsilon;
         } else if (i < 453 && i >= 389) {
             constantes::ocupacionReyFinal[i - 389] -= 2 * epsilon;
-        } /*else if (i == 453) {
+        } */
+/*else if (i == 453) {
                 constantes::premioPorEnrocar -= 2 * epsilon;
             } else if (i == 454) {
                 constantes::castigoPorSacarDama -= 2 * epsilon;
@@ -299,13 +341,18 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
                 constantes::premioEscudoDePeones -= 2 * epsilon;
             } else if (i == 459) {
                 constantes::castigoEnroqueSinEscudo -= 2 * epsilon;
-            }*/
+            }*//*
 
-  /*      double val2 = k * m->quiescence(t, -500000, 500000);
-        double v = (val2 - val1) / (epsilon * 2);*/
+
+  */
+/*      double val2 = k * m->quiescence(t, -500000, 500000);
+        double v = (val2 - val1) / (epsilon * 2);*//*
+
+*/
 /*
         gradiente.push_back(v);
-*/
+*//*
+
         if (i < 5) {
             constantes::valorPieza[i + 1] += epsilon;
             constantes::valorPieza[i + 7] -= epsilon;
@@ -325,11 +372,13 @@ std::vector<double> codigo_auxiliar:: calcularGradiente(std::string fen, double 
             constantes::ocupacionReyFinal[i - 389] += epsilon;
         } else if (i == 453) {
             constantes::premioPorEnrocar += epsilon;
-        }/* else if (i == 454) {
+        }*/
+/* else if (i == 454) {
             constantes::castigoPorSacarDama += epsilon;
         } else if (i == 455) {
             constantes::castigoMultiplesMovimientos += epsilon;
-        } */else if (i == 456) {
+        } *//*
+else if (i == 456) {
             constantes::castigoPeonBloqueado += epsilon;
         } else if (i == 457) {
             constantes::premioDesarrolloPiezaMenor += epsilon;
@@ -352,10 +401,12 @@ std::vector<double> codigo_auxiliar::SGD(int epochs, double learningRate) {
         positions.push_back(line);
     }
 
+*/
 /*    if (positions.empty()) {
         std::cerr << "Error: No positions found in the file." << std::endl;
         return std::vector<double>(432, std::numeric_limits<double>::quiet_NaN());
-    }*/
+    }*//*
+
     Motor* m = new Motor();
 
     std::vector<double> gradientes(432, 0.0);
@@ -378,7 +429,7 @@ std::vector<double> codigo_auxiliar::SGD(int epochs, double learningRate) {
         std::string fen = positions[x].substr(0, positions[x].size() - 5);
         std::string res = positions[x].substr(positions[x].size() - 4, 3);
         double score = std::stof(res);
-        Tablero t = Tablero("position fen " + fen);
+        Tablero t = Tablero();
         int k = (t._turno == 0) ? 1 : -1;
         m->ply = -1;
 
@@ -429,7 +480,9 @@ std::vector<double> codigo_auxiliar::SGD(int epochs, double learningRate) {
     }
 
 
-    /*// Clipping de gradientes
+    */
+/*//*
+/ Clipping de gradientes
     double clipValue = 1.0;
     for (int i = 0; i < 432; i++) {
         if (gradientes[i] > clipValue) {
@@ -437,7 +490,8 @@ std::vector<double> codigo_auxiliar::SGD(int epochs, double learningRate) {
         } else if (gradientes[i] < -clipValue) {
             gradientes[i] = -clipValue;
         }
-    }*/
+    }*//*
+
 
     // Promediar los gradientes
     for (int i = 0; i < 432; i++) {
@@ -446,4 +500,4 @@ std::vector<double> codigo_auxiliar::SGD(int epochs, double learningRate) {
     delete m;
 
     return gradientes;
-}
+}*/
