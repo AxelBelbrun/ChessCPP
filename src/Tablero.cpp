@@ -36,6 +36,8 @@ void Tablero::actualizarTablero(std::string posicionASetear) {
     inicializarContadoresDeMovimientos();
     calcularMasksPeonesPasados();
     contadorZobrist = -1;
+    enroques = stack<derechosDeEnroque>();
+    historialEnPassant = {};
 
     bitboards = {};
 
@@ -405,7 +407,6 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
                     break;
                 }
             }
-            imprimirTablero();
             cantMovesGenerados[0] = -1;
             contadorJugadas++;
         }
@@ -2999,9 +3000,11 @@ bool Tablero::chequearEnroqueCorto() {
             U64 attackMapNegras = (obtenerAttackMapNegras());
             bool estaLaTorre = (bitboards[2] & 0b1ULL) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
+            bool estaElRey = (bitboards[0] & 0b1000ULL) > 0;
+
             bool sinAtaqueRival = (attackMapNegras & 0b110ULL) == 0;
             bool zonaLiberada = (0b110ULL & todas_las_piezas()) == 0; // 110 es f1 y g1
-            return sinAtaqueRival && zonaLiberada && !reyEnJaque && estaLaTorre;
+            return sinAtaqueRival && estaElRey && zonaLiberada && !reyEnJaque && estaLaTorre;
         }
 
     } else {
@@ -3010,9 +3013,11 @@ bool Tablero::chequearEnroqueCorto() {
             U64 attackMapBlancas = (obtenerAttackMapBlancas());
             bool estaLaTorre = (bitboards[8] & 0x100000000000000) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
+            bool estaElRey = (bitboards[6] & 0x800000000000000ULL) > 0;
+
             bool sinAtaqueRival = (attackMapBlancas & 0x600000000000000ULL) == 0;
             bool zonaLiberada = (0x600000000000000ULL & todas_las_piezas()) == 0; // 110 es f8 y g8
-            return sinAtaqueRival && zonaLiberada && !reyEnJaque && estaLaTorre;
+            return sinAtaqueRival && estaElRey && zonaLiberada && !reyEnJaque && estaLaTorre;
         }
         // enroque largo blancas tas chispoton
 
@@ -3026,20 +3031,22 @@ bool Tablero::chequearEnroqueLargo() {
         if (enroqueLargoBlancas()) {
             U64 attackMapNegras = (obtenerAttackMapNegras());
             bool estaLaTorre = (bitboards[2] & 0b10000000ULL) > 0;
+            bool estaElRey = (bitboards[0] & 0b1000ULL) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
             bool sinAtaqueRival = ((attackMapNegras & 0b110000ULL) == 0);
             bool zonaLiberada = ((0b1110000ULL & todas_las_piezas()) == 0); // 1110000 es b1, c1 y d1
-            return sinAtaqueRival && zonaLiberada && !reyEnJaque && estaLaTorre;
+            return sinAtaqueRival && estaElRey && zonaLiberada && !reyEnJaque && estaLaTorre;
         }
     } else {
 
         if (enroqueLargoNegras()) {
             U64 attackMapBlancas = (obtenerAttackMapBlancas());
             bool estaLaTorre = (bitboards[8] & 0x8000000000000000ULL) > 0;
+            bool estaElRey = (bitboards[6] & 0x800000000000000ULL) > 0;
             bool reyEnJaque = reyPropioEnJaque(_turno);
             bool sinAtaqueRival = ((attackMapBlancas & 0x3000000000000000ULL) == 0);
             bool zonaLiberada = ((0x7000000000000000ULL & todas_las_piezas()) == 0); // 1110000 es b8, c8 y d8
-            return sinAtaqueRival && zonaLiberada && !reyEnJaque && estaLaTorre;
+            return sinAtaqueRival && estaElRey && zonaLiberada && !reyEnJaque && estaLaTorre;
         }
     }
     return false;

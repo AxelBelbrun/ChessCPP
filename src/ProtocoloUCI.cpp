@@ -298,8 +298,8 @@ void ProtocoloUCI:: inputGo(string input) {
                         tablero->alfilesBlancos + tablero->alfilesNegros) <= 6 ? true : false;
 
         int plySegunEtapa;
-        esFinal ? plySegunEtapa = 5 : plySegunEtapa = 10;
-        if( i >= 5 && !esFinal) {
+        esFinal ? plySegunEtapa = 10 : plySegunEtapa = 5;
+        if( i >= 5) {
             if (tablero->formatearJugada(mejorJugadaTemporal) == tablero->formatearJugada(motor->bestMove)) {
                 plySeguidosComoMejorJugada++;
             }
@@ -310,7 +310,6 @@ void ProtocoloUCI:: inputGo(string input) {
                 romper = true;
             }
         }
-        cout << "Nodos en profundidad " << i << ": " << motor->nodos << endl;
         if (romper) {
             break;
         }
