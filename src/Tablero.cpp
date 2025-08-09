@@ -408,7 +408,6 @@ void Tablero::setearPosicionInicial(const string &posicionASetear) {
                 }
             }
             cantMovesGenerados[0] = -1;
-            contadorJugadas++;
         }
 
     }

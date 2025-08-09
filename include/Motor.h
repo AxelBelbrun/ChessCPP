@@ -65,7 +65,8 @@ public:
 
     float movilidadM = 1;
     float movilidadF = 0.8;
-
+    float peonesPasadosM = 0.2;
+    float peonesPasadosF = 1.0;
     bool primerMovimiento;
 
 

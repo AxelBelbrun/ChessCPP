@@ -222,7 +222,7 @@ float Motor::valoracion(Tablero *tablero) {
 
     //Evaluamos la seguridad del rey
 
-        float reysec = 0.5*seguridadDelRey(tablero);
+        float reysec = seguridadDelRey(tablero);
         evaluacionMedio += reysec*seguridadDelReyM;
         evaluacionFinal += reysec*seguridadDelReyF;
 
@@ -237,13 +237,9 @@ float Motor::valoracion(Tablero *tablero) {
     evaluacion += controlDeCentro(tablero, tablero->_turno);
 */
 
-/*    if(tablero->endgame) {
-        premioPorPeonesPasados = tablero->detectarPeonesPasados(0) - tablero->detectarPeonesPasados(1);
-        evaluacion += (tablero->_turno == 0) ? premioPorPeonesPasados : -premioPorPeonesPasados;
-    }*/
-/*    if (tablero->_turno == 1) {
-        evaluacion = -evaluacion;
-    }*/
+    premioPorPeonesPasados = tablero->detectarPeonesPasados(0) - tablero->detectarPeonesPasados(1);
+    evaluacionMedio += premioPorPeonesPasados*peonesPasadosM;
+    evaluacionFinal += premioPorPeonesPasados*peonesPasadosF;
     float pesoM = fase;
     float pesoF = 256 - fase;
 
@@ -659,8 +655,9 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
     if (profundidad > 3 && (contarMaterialSinPeones(tablero) > 0) &&
          (valoracion(tablero) > beta) && !(tablero->reyPropioEnJaque(tablero->_turno))) {
         exitosNull++;
+        int reduccion_nula = (profundidad > 6) ? 4 : 3;
         tablero->movimientoNulo();
-        float eval = -negamax(tablero, profundidad - 3, -beta, -beta + 1, false);
+        float eval = -negamax(tablero, profundidad - 1 - reduccion_nula, -beta, -beta + 1, false);
         ply--;
         index_repeticion--;
         tablero->deshacerMovimientoNulo();
@@ -723,7 +720,10 @@ float Motor::negamax(Tablero *tablero, int profundidad, float alfa, float beta, 
             bool esJaque = tablero->esUnJaque(movimiento);
 
             if (!esCaptura && !esPromocion && !esKiller && !esJaque && cantidadDeMovesBuscados > 2 && profundidad > 2) {
-                eval = -negamax(tablero, profundidad - 2, -alfa - 1, -alfa, false);
+                int reduccion = 1;
+                if (cantidadDeMovesBuscados > 5) reduccion = 2; // Reducción más agresiva para movimientos más tardíos
+                if (profundidad > 6 && cantidadDeMovesBuscados > 8) reduccion = 3;
+                eval = -negamax(tablero, profundidad - reduccion, -alfa - 1, -alfa, false);
                 ply--;
                 index_repeticion--;
                 if (eval < alfa) {

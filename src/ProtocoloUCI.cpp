@@ -281,7 +281,12 @@ void ProtocoloUCI:: inputGo(string input) {
             motor->bestMove = 0;
 
         }
-
+        int nodosIteracionAnterior;
+        if( i > 1){
+            //Effective branching factor:
+            cout << "EBF: " << (float)motor->nodos / (float)nodosIteracionAnterior << endl;
+        }
+        nodosIteracionAnterior = motor->nodos;
 
         motor->ply = -1;
         motor->nodosBusqueda = 0;
@@ -298,7 +303,7 @@ void ProtocoloUCI:: inputGo(string input) {
                         tablero->alfilesBlancos + tablero->alfilesNegros) <= 6 ? true : false;
 
         int plySegunEtapa;
-        esFinal ? plySegunEtapa = 10 : plySegunEtapa = 5;
+        esFinal ? plySegunEtapa = 12 : plySegunEtapa = 5;
         if( i >= 5) {
             if (tablero->formatearJugada(mejorJugadaTemporal) == tablero->formatearJugada(motor->bestMove)) {
                 plySeguidosComoMejorJugada++;
