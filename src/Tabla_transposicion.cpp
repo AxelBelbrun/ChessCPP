@@ -3,7 +3,7 @@
 #include "Tabla_transposicion.h"
 
 Tabla_transposicion::Tabla_transposicion() {
-    this->tamanoTabla = 4*419430;
+    this->tamanoTabla = 33554432;
     count = 0;
 }
 
@@ -46,7 +46,7 @@ void Tabla_transposicion::insertar(U64 clave, float valor, int profundidad, int 
 }
 
 U64 Tabla_transposicion::index(U64 clave) {
-    return clave % (tamanoTabla);
+    return clave & (tamanoTabla - 1);
 }
 
 u_short Tabla_transposicion::obtenerMovimientoGuardado(U64 clave) {

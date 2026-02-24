@@ -305,7 +305,7 @@ void ProtocoloUCI:: inputGo(string input) {
         int plySegunEtapa;
         esFinal ? plySegunEtapa = 12 : plySegunEtapa = 5;
         if( i >= 5) {
-            if (tablero->formatearJugada(mejorJugadaTemporal) == tablero->formatearJugada(motor->bestMove)) {
+            if (mejorJugadaTemporal == motor->bestMove) {
                 plySeguidosComoMejorJugada++;
             }
             else {
