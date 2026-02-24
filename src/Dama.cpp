@@ -11,26 +11,24 @@ Dama :: Dama(){};
 
 
 //Genera los movimientos
-U64 Dama::generar_movimientos_legales(U64 dama, U64 piezasPropias, U64 piezasRivales, int turno) {
+U64 Dama::generar_movimientos_legales(U64 pieza, U64 piezasPropias, U64 piezasRivales, int turno) {
 
+    static Alfil alfil;
+    static Torre torre;
     U64 movimientos = 0L;
-    Alfil* alfil = new Alfil();
-    Torre* torre = new Torre();
-    movimientos = movimientos | alfil->generar_movimientos_legales(dama, piezasPropias, piezasRivales, 0);
-    movimientos = movimientos | torre->generar_movimientos_legales(dama, piezasPropias, piezasRivales, 0);
-    delete alfil;
-    delete torre;
+    movimientos = movimientos | alfil.generar_movimientos_legales(pieza, piezasPropias, piezasRivales, 0);
+    movimientos = movimientos | torre.generar_movimientos_legales(pieza, piezasPropias, piezasRivales, 0);
     return movimientos;
 }
 
 //Genera la mascara de ataque
-U64 Dama:: generar_attack_mask(U64 bitboard_dama) {
+U64 Dama::generar_attack_mask(U64 bitboard_dama) {
+    static Alfil alfil;
+    static Torre torre;
     U64 movimientos = 0L;
-    Alfil* alfil = new Alfil();
-    Torre* torre = new Torre();
-    movimientos = movimientos | alfil->generar_attack_mask(bitboard_dama);
-    movimientos = movimientos | torre->generar_attack_mask(bitboard_dama);
-    delete alfil;
-    delete torre;
+    movimientos = movimientos | alfil.generar_attack_mask(bitboard_dama);
+    movimientos = movimientos | torre.generar_attack_mask(bitboard_dama);
     return movimientos;
 }
+
+//

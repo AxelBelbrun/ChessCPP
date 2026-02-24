@@ -141,6 +141,194 @@ El archivo contiene secciones comentadas que parecen ser trabajo en progreso:
 
 ---
 
+## Información Técnica de Optimización
+
+### Complejidad Algorítmica
+
+| Función | Complejidad | Análisis |
+|---------|-------------|----------|
+| `masksTableroVacio()` | O(64 × M) | 64 iteraciones, donde M es el coste de `generar_attack_mask()` |
+| `masksPiezasBloqueando()` | O(2^n × n) | n = bits bloqueables. Genera 2^n masks, cada uno con n operaciones de setBit |
+| `obtenerNumeroMagico()` | O(I × 2^n × M) | I = intentos (max 100,000), 2^n configuraciones, M = coste de generar_movimientos_legales() |
+
+**Detalles:**
+- Para el alfil, n varía entre 4-13 dependiendo de la posición:
+  - Esquinas: n = 4-6 → 16-64 configuraciones
+  - Bordes: n = 7-9 → 128-512 configuraciones
+  - Centro: n = 10-13 → 1024-8192 configuraciones
+
+---
+
+### Uso de Memoria
+
+| Estructura | Tamaño | Notas |
+|------------|--------|-------|
+| `BBits[64]` | 256 bytes | Datos estáticos, siempre en memoria |
+| `masksTableroVacio()` | 64 × 8 = **512 bytes** | Vector temporal por llamada |
+| `masksPiezasBloqueando()` | 2^n × 8 bytes | Hasta 64KB para centro (8192 × 8) |
+| `tablaDeHash[512]` | 512 × 8 = **4 KB** | Tabla temporal en `obtenerNumeroMagico()` |
+| `Alfil*` | ~tamaño clase | Objeto dinámico creado/destruido por llamada |
+
+**Notas:**
+- `masksTableroVacio()` se recalcula en CADA llamada a `obtenerNumeroMagico()` → podría cachearse
+- Los vectores usan overhead adicional de `std::vector` (~24 bytes por vector)
+
+---
+
+### Cuellos de Botella Identificados
+
+#### 1. **Recálculo de `masksTableroVacio()` en cada búsqueda** (línea 56)
+```cpp
+vector<U64> masksTableroVacio = calculadoraMovesAlfil::masksTableroVacio();
+```
+Este método itera 64 veces y llama a `generar_attack_mask()` para cada casilla. Se ejecuta **cada vez** que se busca un número mágico. 
+
+**Impacto:** ~64 llamadas a `generar_attack_mask()` × 100,000 intentos = 6.4M llamadas innecesarias.
+
+**Oportunidad:** Calcular una sola vez al inicio y reutilizar.
+
+#### 2. **Creación/destrucción de objetos `Alfil`**
+```cpp
+auto alfil = new Alfil();  // línea 22
+// ... uso ...
+delete alfil;              // línea 31
+```
+```cpp
+Alfil* alfil = new Alfil();  // línea 60
+// ... uso ...
+// NO HAY DELETE → MEMORY LEAK
+```
+
+**Problemas:**
+- Memory leak en línea 60: `alfil` nunca se libera
+- Creación repetida de objetos en `masksTableroVacio()`
+
+#### 3. **Potencia de 2 en tiempo de ejecución** (línea 43)
+```cpp
+for(int j = 0; j < pow(2, contador); j++)
+```
+`pow()` es una función floating-point costosa. Debería usar shift: `1 << contador` (con control de overflow).
+
+#### 4. **Búsqueda con máximo fijo de intentos**
+```cpp
+for(w; w < 100000; w++)
+```
+- 100,000 es un número arbitrario
+- No hay early termination por caso imposible
+- Coste variable: algunas casillas pueden necesitar más intentos
+
+#### 5. **Parámetro `shifteo` no utilizado**
+El segundo parámetro está declarado pero ignorado:
+```cpp
+U64 obtenerNumeroMagico(int casilla, int shifteo)  // shifteo = 9 hardcodeado
+```
+
+---
+
+### Operaciones Costosas por Categoría
+
+| Operación | Coste Aproximado | Frecuencia | Impacto |
+|-----------|------------------|------------|---------|
+| `pow(2, n)` | ~50-100 ciclos | Por cada `masksPiezasBloqueando()` | Bajo-Medio |
+| `generar_movimientos_legales()` | Alto | 2^n × intentos | **Muy Alto** |
+| `mt()` (random 64-bit) | ~20-30 ciclos | intentos × 1 | Bajo |
+| Multiplicación U64 | ~20-40 ciclos | 2^n × intentos | Medio |
+| Shift U64 | ~1 ciclo | 2^n × intentos | Bajo |
+| `std::vector::push_back()` | Variable | 2^n veces | Medio |
+
+---
+
+### Ineficiencias de Código
+
+#### A. Vector no inicializado con tamaño exacto
+```cpp
+vector<U64> masks;
+for(int j = 0; j < pow(2, contador); j++){
+    masks.push_back(0L);  // push_back con reallocation
+```
+**Mejora:** `vector<U64> masks(1 << contador, 0);`
+
+#### B. Uso inconsistente de tipos
+```cpp
+vector<U64> masks;           // línea 42
+vector<U64> masksTableroVacio = ...;  // línea 56
+vector<u_short> a;           // línea 81 (definida pero no usada)
+```
+- `vector<U64>` vs `vector<u_short>` - sin consistencia
+
+#### C. Tabla de hash no limpiada eficientemente
+```cpp
+for (int j = 0; j < 512; j++) {
+    tablaDeHash[j] = 0;  // Loop manual
+}
+```
+**Mejora:** `memset(tablaDeHash, 0, sizeof(tablaDeHash));`
+
+#### D. Variable no utilizada
+```cpp
+vector<u_short> a;  // línea 81 - declarada pero nunca usada
+```
+
+---
+
+### Métricas de Rendimiento Estimadas
+
+Asumiendo las siguientes operaciones base:
+- `generar_movimientos_legales()`: ~500 ciclos
+- Iteración media de configuraciones: ~256 (nivel centro)
+
+| Escenario | Iteraciones | Coste Estimado |
+|-----------|-------------|----------------|
+| Mejor caso (esquina) | 1-10 | 64 × 500 × 10 = **320K ciclos** |
+| Caso promedio | 1000 | 64 × 500 × 1000 = **32M ciclos** |
+| Peor caso (centro) | 100,000 | 64 × 500 × 100,000 = **3.2G ciclos** |
+
+**Nota:** Estas son estimaciones burdas; el rendimiento real depende fuertemente de `generar_movimientos_legales()`.
+
+---
+
+### Oportunidades de Optimización Identificadas
+
+#### Prioridad Alta
+1. **Cachear `masksTableroVacio()`** como variable estática o miembro de clase
+2. **Corregir memory leak** en `obtenerNumeroMagico()` (línea 60)
+3. **Reutilizar objeto `Alfil`** en lugar de crear/destruir por llamada
+
+#### Prioridad Media
+4. **Reemplazar `pow(2, n)`** por `1 << n` (con validación de n < 63)
+5. **Usar `memset`** para limpiar tablaDeHash
+6. **Hacer `shifteo` operativo** o eliminar el parámetro muerto
+7. **Pre-calcular tamaño de vector** en `masksPiezasBloqueando()`
+
+#### Prioridad Baja
+8. **Eliminar variable `a` no utilizada** (línea 81)
+9. **Usar `reserve()`** en vectores si se conoce el tamaño
+10. **Considerar paralelización** para buscar magic numbers de 64 casillas
+
+---
+
+### Consideraciones para Refactoring
+
+1. **Separación de responsabilidades**: La clase actualmente mezcla:
+   - Cálculo de masks
+   - Búsqueda de números mágicos
+   - Generación de ataques
+   
+   Podría dividirse en clases especializadas.
+
+2. **Valores hardcodeados a constantes**:
+   ```cpp
+   const int MAX_INTENTOS = 100000;
+   const int SHIFT_ALFIL = 9;
+   const int TABLA_HASH_SIZE = 512;
+   ```
+
+3. **Patrón de diseño**: Considerar singleton para la calculadora mágica, manteniendo caches de masks.
+
+4. **Thread-safety**: Si se paraleliza la búsqueda de números mágicos para múltiples casillas, habría que considerar sincronización.
+
+---
+
 ## Integración con el Resto del Programa
 
 ```

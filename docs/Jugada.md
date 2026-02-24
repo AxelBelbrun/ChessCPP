@@ -88,3 +88,98 @@ El módulo depende de:
 5. **Comentar código**: Hay bloques comentados en ambas líneas (constructor alternativo en .cpp, operadores en .h) que deberían eliminarse o mantenerse explícitamente.
 
 6. **Notación confusa**: Nombres como PROMOTIONDER/PROMOTIONIZQ parecen hacer referencia a direcciones (derecha/izquierda) pero el significado no es claro sin contexto adicional.
+
+## Análisis técnico para optimización
+
+### Características de memoria
+
+| Aspecto | Detalle |
+|---------|---------|
+| Tamaño de `Jugada` | 2 bytes (`u_short` único) |
+| Alineación | 2 bytes (óptimo para arquitecturas de 16/32/64 bits) |
+| Padding | Ninguno (estructura minimalista) |
+| Sobrecarga por instanciación | 2 bytes por objeto |
+
+La estructura ocupa exactamente 2 bytes, lo cual es óptimo para almacenar los tres componentes del movimiento. El diseño es más eficiente que usar tres campos separados (que ocuparía 12 bytes con padding típico de 32 bits).
+
+### Operaciones bit a nivel de Assembly
+
+Los getters utilizan operaciones extremadamente eficientes a nivel de CPU:
+
+| Método | Operación | Latencia típica (ciclos) |
+|--------|-----------|------------------------|
+| `getSalida()` | `AND` con mask 0x3F | 1 ciclo |
+| `getLlegada()` | Shift right 6 + `AND` | 1 ciclo |
+| `getTipoDeJugada()` | Shift right 12 + `AND` | 1 ciclo |
+| `getCasillaDestino()` | Shift right 6 | 1 ciclo |
+
+**Consideración crítica**: `getLlegada()` y `getCasillaDestino()` realizan exactamente la misma operación (`movimiento >> 6`), pero la primera aplica una máscara adicional que es redundante dado el rango de bits utilizado. Esta máscara `& 0x3F` no afecta el resultado pero consume un ciclo de CPU adicional.
+
+### Constructor inline
+
+El constructor `Jugada(int salida, int llegada, int tipoDeJugada)` está definido inline en el header. El compilador puede:
+- **Inlinearlo completamente**: Eliminando la llamada de función
+- **Usar registros**: Los tres parámetros caben en registros (RDI, RSI, EDX en x86-64)
+- **Optimizar shifts compuestos**: `llegada << 6` y `tipoDeJugada << 12` pueden ejecutarse en paralelo en CPUs con ejecución fuera de orden
+
+### Análisis de `stringToUShort()`
+
+Esta función presenta el mayor costo computacional del módulo:
+
+| Operación | Costo relativo |
+|-----------|-----------------|
+| `jugada.substr(0,2)` | Asignación heap (≈50-100 ciclos) |
+| `jugada.substr(2,2)` | Asignación heap (≈50-100 ciclos) |
+| `casillaANumero.at()` | Hash lookup (≈10-30 ciclos) |
+| `jugada[4] - '0'` | Acceso array + resta (1 ciclo) |
+| Operaciones bit | Negligible (1 ciclo) |
+
+**Cuellos de botella identificados**:
+1. **Allocaciones de memoria**: `substr()` crea nuevos objetos `std::string` en cada llamada
+2. **Hash map lookup**: `std::map::at()` tiene complejidad O(log n), podría optimizarse con unordered_map
+3. **Sin validación**: No hay checks de longitud, causando undefined behavior con strings cortos
+
+### Potencial de optimización
+
+#### 1. Eliminación de asignaciones heap
+```cpp
+// Actual (costoso):
+jugada.substr(0,2)  // allocates new string
+
+// Optimizable con string_view:
+std::string_view(jugada.data(), 2)  // no allocation
+```
+
+#### 2. Lookuptable para conversión string→número
+El mapa `casillaANumero` con 64 entradas puede convertirse en un array estático indexado directamente, eliminando el hash lookup:
+```cpp
+// En lugar de map lookup:
+int salida = casillaANumero.at(jugada.substr(0,2));
+
+// Array indexable:
+int salida = charToSquare[jugada[0]-'a'][jugada[1]-'1'];  // O(1) directo
+```
+
+#### 3. Unificación de getters redundantes
+`getLlegada()` y `getCasillaDestino()` pueden fusionarse. La máscara en `getLlegada()` es redundante dado que el shift ya posiciona los bits correctamente.
+
+#### 4. Pre-computación de masks
+Los masks `0x3F` (63) pueden declararse como `constexpr` para permitir optimización en tiempo de compilación.
+
+### Consideraciones de caché
+
+- **Footprint mínimo**: 2 bytes por `Jugada` permite almacenar hasta ~500 jugadas en una caché L1 típico (1KB)
+- **Spatial locality**: Almacenar arrays de `Jugada` es extremadamente cache-friendly
+- **Sin false sharing**: En entornos multithreaded, el tamaño de 2 bytes minimiza contenido entre líneas de caché
+
+### Observaciones para análisis de oportunidades
+
+1. **Hot path**: Los getters son parte del hot path del motor de búsqueda. Optimizarlos (especialmente eliminar la máscara redundante) tiene impacto directo en NPS (nodes per second).
+
+2. **String parsing es el bottleneck**: La conversión de string a `u_short` es 50-100x más costosa que las operaciones bit. Priorizar optimización aquí si el perfilado muestra lentitud en parsing UCI.
+
+3. **Memoria vs velocidad**: El diseño actual prioriza espacio (2 bytes). Si el perfilado indica que los getters son críticos,可以考虑 convertir a registros separados (6+6+6 = 18 bits, 4 bytes con padding) para eliminar shifts.
+
+4. **Sin SIMD potencial**: Por el tamaño mínimo y naturaleza escalar, no hay oportunidad de vectorización SIMD en este módulo.
+
+5. **Trade-off diseño**: El uso de bit-packing es apropiado para este caso de uso. Alternativas como campos separados simplificarían el código pero aumentarían uso de memoria 4x-6x.

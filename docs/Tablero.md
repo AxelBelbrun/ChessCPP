@@ -204,10 +204,172 @@ El módulo depende de las siguientes clases y utilidades (implementadas en otros
 
 ---
 
-## 7. Glosario
+## 8. Información Técnica para Optimización
 
-- **Bitboard**: Representación del tablero usando 64 bits (un bit por casilla)
-- **Magic Bitboards**: Técnica de optimización para calcular ataques de piezas deslizantes
-- **Zobrist Key**: Hash de la posición para detección rápida de repeticiones
-- **Ply**: Un medio-movimiento (movimiento de un bando)
-- **Clavada**: Pieza que no puede moverse porque expondría a su rey a jaque
+### 8.1 Memoria
+
+| Estructura | Tamaño | Descripción |
+|------------|--------|-------------|
+| `movimientosDeTorre[64][4096]` | 64 × 4096 × 8 = **2 MB** | Tabla de movimientos de torre |
+| `movimientosDeAlfil[64][512]` | 64 × 512 × 8 = **256 KB** | Tabla de movimientos de alfil |
+| `movimientosDeCaballo[64]` | 64 × 8 = **512 bytes** | Tabla de movimientos de caballo |
+| `movimientosDeRey[64]` | 64 × 8 = **512 bytes** | Tabla de movimientos de rey |
+| `bitboards[12]` | 12 × 8 = **96 bytes** | Estado actual del tablero |
+| `historialZobrist[512]` | 512 × 8 = **4 KB** | Historial de posiciones |
+| `historialBitboards[512]` | 512 × ~40 bytes | Historial de cambios |
+| `jugadas[512]` | 512 × 2 = **1 KB** | Historial de jugadas |
+| `ocupacionPiezas[14]` | 14 × 4 = **56 bytes** | Evaluación de posición |
+
+**Total aproximado**: ~2.3 MB en tablas estáticas
+
+### 8.2 Complejidad Algorítmica
+
+| Operación | Complejidad | Notas |
+|-----------|-------------|-------|
+| `piezas_blancas()` / `piezas_negras()` | O(6) | Itera sobre 6 bitboards |
+| `todas_las_piezas()` | O(1) | OR de dos llamadas |
+| `obtenerTipoDePieza()` | O(12) | Itera sobre todos los bitboards |
+| `generar_movimientos()` | O(1) por movimiento | Lookup en tablas precalculadas |
+| `reyPropioEnJaque()` | O(1) a O(n) | Verifica múltiples fuentes de jaque |
+| `estaClavada()` | O(n) | Itera sobre piezas deslizantes rivales |
+| `zobristKey()` | O(n) | Itera sobre todas las piezas en el tablero |
+| `moverPieza()` | O(12) | Busca bitboard de origen y destino |
+
+### 8.3 Operaciones Bit Frecuentes
+
+El código utiliza extensivamente operaciones bit en `U64`:
+
+| Operación | Frecuencia | Notas |
+|-----------|------------|-------|
+| `operaciones_bit::setBit()` | Muy alta | Establece un bit |
+| `operaciones_bit::LSB()` | Muy alta | Obtiene el bit menos significativo |
+| `operaciones_bit::getSalida()` | Alta | Extrae casilla de salida de `u_short` |
+| `operaciones_bit::getLlegada()` | Alta | Extrae casilla de llegada de `u_short` |
+| `operaciones_bit::getTipoDeJugada()` | Alta | Extrae tipo de movimiento |
+| `operaciones_bit::crearJugada()` | Alta | Codifica jugadas |
+
+**Nota**: Estas operaciones están definidas en `operaciones_bit`. La eficiencia de `LSB()` es crítica - debería usar intrinsics como `__builtin_ctzll()` o instrucciones CPU (`TZCNT`/`BSF`).
+
+### 8.4 Tablas de Magic Bitboards
+
+El código implementa el sistema de **magic bitboards**:
+
+```
+Key = (occupancy * magic_number) >> (64 - bits)
+Lookup = movimientos[casilla][key]
+```
+
+| Pieza | Bits de índice | Configuraciones | Tamaño tabla |
+|--------|----------------|-----------------|--------------|
+| Torre | 12 | 4096 | 64 × 4096 = 262,144 entradas |
+| Alfil | 9 | 512 | 64 × 512 = 32,768 entradas |
+
+**Constantes magic** (en `constantes`):
+- `magicsParaTorre[64]`
+- `magicsParaAlfil[64]`
+
+### 8.5 Puntos de Acceso Calientes (Hot Paths)
+
+Estos métodos se llaman frecuentemente durante la búsqueda:
+
+1. **`moverPieza()`** - Llamado miles de veces por el motor de búsqueda
+2. **`deshacerMovimiento()`** - Debe ser muy rápido para el algoritmo de recursión
+3. **`reyPropioEnJaque()`** - Llamado para validar movimientos legales
+4. **`generar_movimientos()`** - Genera todos los movimientos posibles
+5. **`bitboard_movimientos_*()`** - Consulta tablas para ataques
+6. **`piezas_blancas()` / `piezas_negras()`** - Calcula union de bitboards
+
+### 8.6 Evaluación de Posición (Ocupación)
+
+El sistema mantiene valores de **ocupación** actualizados para la función de evaluación:
+
+```cpp
+int ocupacionPiezas[14];  // Índices 0-5: blancas, 6-11: negras, 12-13: reyes (medio/final)
+```
+
+Tablas de lookup (definidas en `constantes`):
+- `ocupacionPeon[64]`
+- `ocupacionCaballo[64]`
+- `ocupacionAlfil[64]`
+- `ocupacionTorre[64]`
+- `ocupacionReina[64]`
+- `ocupacionReyMedioJuego[64]`
+- `ocupacionReyFinal[64]`
+
+Funciones de actualización:
+- `calcularOcupacion()` - Recalcula toda la ocupación
+- `actualizarOcupacion(u_short)` - Actualiza incrementalmente
+- `contarMaterialSinPeones()` - Cuenta material sin peones
+
+### 8.7 Zobrist Key
+
+Sistema de hashing para detección de repeticiones:
+
+- **Tabla de claves**: `zobristKeys[12][64]` - Una clave por cada pieza en cada casilla
+- **Claves adicionales**: Para turno, enroques, y en-passant
+- **Actualización**: `actualizarZobristKey()` modifica la clave en lugar de recalcularla completamente
+
+### 8.8 Iteración sobre Bitboards
+
+Patrón común en el código:
+
+```cpp
+// Iterar sobre todas las piezas de un tipo
+U64 bitboard = bitboards[INDICE];
+while (bitboard > 0) {
+    int casilla = operaciones_bit::LSB(bitboard);
+    // procesar...
+    bitboard &= bitboard - 1;  // Clear LSB
+}
+```
+
+Esta técnica (clear LSB) es O(n) donde n = número de piezas.
+
+### 8.9 includes Relevantes para Optimización
+
+```cpp
+#include <x86intrin.h>  // Intrinsics de CPU (potencialmente usado en operaciones_bit)
+```
+
+---
+
+## 9. Oportunidades de Optimización Identificadas
+
+### 9.1 Alta Prioridad
+
+1. **Reemplazar `obtenerTipoDePieza()`**: Actualmente itera sobre 12 bitboards. Puede optimizarse usando lookup tables o manteniendo un array auxiliar.
+
+2. **Cachear `piezas_blancas()` y `piezas_negras()`**: Se calculan frecuentemente mediante OR de 6 bitboards cada vez.
+
+3. **Optimizar `reyPropioEnJaque()`**: Función crítica con múltiples branches. Puede vectorizarse.
+
+4. **Inlining de operaciones bit**: Asegurar que `setBit`, `LSB`, etc. estén inlineadas.
+
+### 9.2 Media Prioridad
+
+1. **Comprimir estructuras de historial**: `modificacionBitboard` tiene ~40 bytes; puede reducirse.
+
+2. **Eliminar código muerto**: Hay funciones comentadas que aumentan el binary size.
+
+3. **Prefetching de tablas magic**: Las tablas de movimientos son grandes; pueden beneficiarse de prefetch.
+
+4. **SIMD para evaluación**: Las funciones de `calcularOcupacion*()` podrían vectorizarse.
+
+### 9.3 Baja Prioridad
+
+1. **Separar responsabilidades**: La clase `Tablero` hace demasiado; separar en módulos permite mejor cacheo.
+
+2. **Memory pooling**: Los `new` de piezas en `generarTablasNoSliding()` podrían reemplazarse con objetos estáticos.
+
+---
+
+## 10. Benchmarks Sugeridos
+
+Para optimizar este módulo, se recomienda medir:
+
+1. **Nodos por segundo** en búsqueda de profundidad fija
+2. **Tiempo de `generar_movimientos()`** por posición
+3. **Tiempo de `moverPieza()` + `deshacerMovimiento()`** (par)
+4. **Tiempo de `reyPropioEnJaque()`**
+5. **Cache hit rate** de tablas magic
+6. **Tiempo de inicialización** del motor (generación de tablas)

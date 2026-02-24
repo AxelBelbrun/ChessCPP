@@ -297,3 +297,253 @@ El archivo `constantes.cpp` incluye y utiliza:
    - Eliminarlos al final de la inicialización
 
 4. **Simetría de tablas**: Varias tablas (como las de ocupación) podrían generarse automáticamente a partir de una sola tabla espejeada, reduciendo el código y potenciales errores.
+
+---
+
+## 18. Análisis de Uso de Memoria
+
+### 18.1 Tablas Estáticas
+
+| Estructura | Tipo | Tamaño | Memoria |
+|------------|------|--------|---------|
+| `valorPieza[12]` | float | 12 | 48 bytes |
+| `casillasEspejadas[64]` | int | 64 | 256 bytes |
+| `premioPeonPasado[6]` | int | 6 | 24 bytes |
+| `casillasCentrales*` (6 tablas) | float[64] | 6 × 64 | 1,536 bytes |
+| `ocupacion*` (7 tablas) | float[64] | 7 × 64 | 1,792 bytes |
+| `magicsParaTorre[64]` | U64 | 64 | 512 bytes |
+| `magicsParaAlfil[64]` | U64 | 64 | 512 bytes |
+| `zobristKeys[12][64]` | U64 | 768 | 6,144 bytes |
+| `bishop_relevant_bits[64]` | const int | 64 | 256 bytes |
+| `rook_relevant_bits[64]` | const int | 64 | 256 bytes |
+| `enPassant[8]` | U64 | 8 | 64 bytes |
+| Constantes de enroque (4) | U64 | 4 | 32 bytes |
+| Bitboards de archivos/filas | U64 | 8 | 64 bytes |
+
+### 18.2 Tablas Dinámicas
+
+| Estructura | Dimensiones | Memoria Estimada |
+|------------|-------------|------------------|
+| `attackMasksTorre` | 64 × U64 | 512 bytes (para tablero vacío) |
+| `attackMasksAlfil` | 64 × U64 | 512 bytes (para tablero vacío) |
+| `movimientosDeTorre[64][4096]` | 64 × 4096 × U64 | 2,097,152 bytes (2 MB) |
+
+### 18.3 Uso Total de Memoria
+
+El consumo de memoria del módulo de constantes es aproximadamente **2.1 MB**, siendo la tabla `movimientosDeTorre` el mayor consumidor (~2 MB).
+
+### 18.4 Notas de Optimización de Memoria
+
+- **Segmentación de memoria**: La tabla `movimientosDeTorre` podría dividirse en chunks pequeños para mejor más localización de cache.
+- **Compresión**: Los `float` de las tablas de evaluación podrían convertirse a `int16_t` si se escala adecuadamente, reduciendo ~50% del espacio.
+- **Inicialización lazy**: La tabla de movimientos de torre ocupa 2 MB pero no se utiliza activamente (inicializada en cero).
+
+---
+
+## 19. Complejidad Algorítmica de Operaciones Clave
+
+### 19.1 Operaciones con Tablas de Evaluación
+
+| Operación | Complejidad | Notas |
+|-----------|-------------|-------|
+| Lookup de piece-square | O(1) | Acceso directo por índice |
+| Evaluación de posición | O(1) por pieza | ~30 piezas máximo × O(1) |
+| Espejeado de tablas | O(64) | Solo una vez por color |
+
+### 19.2 Operaciones con Magics
+
+| Operación | Complejidad | Notas |
+|-----------|-------------|-------|
+| Generación magic move | O(1) | Lookup en tabla precalculada |
+| Cálculo de índice | O(1) | `(occupancy * magic) >> (64 - relevant_bits)` |
+| Inicialización de tablas | O(2^R) | R = bits relevantes (5-12 según pieza/posición) |
+
+### 19.3 Operaciones con Zobrist
+
+| Operación | Complejidad | Notas |
+|-----------|-------------|-------|
+| Hash de posición | O(N) | N = número de piezas en tablero (~30 max) |
+| Actualización incremental | O(1) por movimiento | XOR de clave old + new |
+
+### 19.4 Mapas de Conversión
+
+| Operación | Complejidad | Notas |
+|-----------|-------------|-------|
+| `casillaANumero["e4"]` | O(log M) | M = tamaño del map (~64), podría ser O(1) con array |
+| `NumeroACasilla[28]` | O(log M) | Mismo caso |
+
+**Nota de optimización**: Los `std::map` podrían reemplazarse por arrays estáticas para acceso O(1).
+
+---
+
+## 20. Patrones de Acceso a Memoria y Cache Locality
+
+### 20.1 Evaluación de Posición
+
+El patrón de acceso más frecuente en la función de evaluación es:
+
+```cpp
+evaluacion += ocupacionPeon[casilla];
+```
+
+- **Tipo de acceso**: Secuencial para piezas del mismo tipo
+- **Spatial locality**: Alta - las casillas contiguas en el tablero suelen procesarse consecutivamente
+- **Temporal locality**: Alta - la misma pieza se evalúa múltiples veces durante el search
+
+### 20.2 Tablas de Magics
+
+- **Tipo de acceso**: Aleatorio basado en occupancy
+- **Cache line**: 64 bytes típicos → 8 U64 por línea
+- **Optimización**: Los magics de piezas similares podrían agruparse para mejor prefetching
+
+### 20.3 Zobrist Hashing
+
+- **Patrón**: Acceso aleatorio pero predecible (basado en posición de pieza)
+- **Optimización**: Las claves Zobrist podrían alinearse a líneas de cache para reducir misses
+
+### 20.4 Recomendaciones para Mejor Cache
+
+1. **Alinear tablas a 64 bytes**: Todas las tablas de 64 elementos de U64 deberían estar alineadas
+2. **Ordenar por frecuencia de acceso**: Poner tablas más usadas (peones, reyes) al inicio
+3. **Prefetching**: Considerar prefetch de tablas antes de bucles de evaluación intensivos
+
+---
+
+## 21. Oportunidades de Optimización de Rendimiento
+
+### 21.1 Optimizaciones de Memoria
+
+| Optimización | Impacto Estimado | Complejidad |
+|--------------|------------------|--------------|
+| Reemplazar `std::map` con array[64] | 10-15% (en parsing UCI) | Baja |
+| Usar `int16_t` para tablas de evaluación | 50% reducción memoria | Media |
+| Eliminar `movimientosDeTorre` no usada | -2 MB | Baja |
+| Usar punteros inteligentes para calculadoras | Previene leaks | Baja |
+
+### 21.2 Optimizaciones Computacionales
+
+| Optimización | Impacto Estimado | Notas |
+|--------------|------------------|-------|
+| Precomputar tablas espejeadas | O(64) → O(0) para negras | Solo inicialización |
+| SIMD para evaluación | 2-4x speedup | Requiere cambios en función de evaluación |
+| Loop unrolling en evaluación | 10-20% | Dependiente del compilador |
+
+### 21.3 Precomputación
+
+Las siguientes operaciones podrían precomputarse en tiempo de compilación:
+
+1. **Mapas de conversión**: Cambiar `std::map` a arrays estáticas
+2. **Tablas espejeadas**: Generar automáticamente las versiones para negras
+3. **Valores absolutos**: `valorPieza` tiene valores negativos redundantes - podrían calcularse en tiempo de ejecución
+
+### 21.4 Constexpr y Compile-Time
+
+El código actual tiene varios elementos que podrían marcarse como `constexpr`:
+
+- `bishop_relevant_bits` y `rook_relevant_bits` (ya son `const`)
+- Tablas de evaluación podrían ser `constexpr`
+- Valores de piezas
+
+Esto permitiría optimización por el compilador y detección de errores en tiempo de compilación.
+
+---
+
+## 22. Operaciones con Potencial de Cuello de Botella
+
+### 22.1 Generación de Movimientos (Magics)
+
+La generación de movimientos es el hotspot principal en motores de ajedrez. El flujo actual es:
+
+1. **Cálculo de ocupación relevante**: `occupancy & magic_mask`
+2. **Índice**: `(occupancy * magic) >> (64 - relevant_bits)`
+3. **Lookup**: `attack_table[index]`
+
+**Tiempos típicos** (por operación):
+- Acceso a tabla: ~1-3 nanosegundos (L1 cache)
+- Cache miss: ~50-100 nanosegundos
+
+### 22.2 Evaluación
+
+La función de evaluación itera sobre ~30 piezas haciendo lookups en tablas de 64 elementos. El acceso es predecible pero podría beneficiarse de:
+
+- ** batching**: Procesar todas las piezas de un tipo antes de pasar al siguiente
+- **Estructura de datos contigua**: Mantener piezas agrupadas por tipo
+
+### 22.3 Hashing Zobrist
+
+El hashing se actualiza incrementalmente durante la generación de movimientos:
+
+- **Por movimiento**: 1-2 XOR operations
+- **Por posición completa**: O(30) para reconstruir desde cero
+
+**No es bottleneck** - las operaciones son O(1) y muy rápidas.
+
+---
+
+## 23. Benchmarks de Referencia Sugeridos
+
+Para identificar hotspots y validar optimizaciones, se sugieren los siguientes benchmarks:
+
+### 23.1 Micro-benchmarks
+
+| Operación | Métrica | Target |
+|-----------|---------|--------|
+| Lookup piece-square | ns/op | < 2 ns |
+| Generación move (magic) | ns/op | < 5 ns |
+| Actualización Zobrist | ns/op | < 1 ns |
+| Conversión coordenada | ns/op | < 10 ns |
+
+### 23.2 Macro-benchmarks
+
+| Escenario | Métrica |
+|-----------|---------|
+| NPS (Nodes Per Second) | Millones/segundo |
+| Profundidad alcanzada en 10s | Ply |
+| Evaluación por segundo | Millones/segundo |
+
+### 23.3 Herramientas Recomendadas
+
+- **Google Benchmark**: Para micro-benchmarks
+- **Valgrind/Callgrind**: Análisis de profiling
+- **perf**: Profiling en Linux
+- **Intel VTune**: Análisis de cache y vectorización
+
+---
+
+## 24. Consideraciones de Paralelización
+
+### 24.1 Secciones Paralelizables
+
+La evaluación y generación de movimientos son inherentemente paralelizables:
+
+1. **Evaluación de hijos**: En alpha-beta, múltiples hijos pueden evaluarse en paralelo
+2. **Move ordering**: Parallel computation de scores
+3. **Tabla de transposición**: Acceso concurrenteo (necesita sincronización)
+
+### 24.2 Secciones No Paralizables
+
+1. **Zobrist hashing**: Acceso secuencial al estado del tablero
+2. **Constantes globales**: Solo lectura, thread-safe
+
+### 24.3 Impacto en Constantes
+
+Las constantes definidas en este módulo son **thread-safe** para lectura concurrente. No requieren sincronización.
+
+---
+
+## 25. Glosario de Términos
+
+| Término | Definición |
+|---------|------------|
+| **Bitboard** | Representación del tablero usando 64 bits |
+| **Magic bitboards** | Técnica de generación de movimientos usando multiplicación y tablas |
+| **Piece-square table** | Tabla que otorga valores posicionales a piezas |
+| **Zobrist hashing** | Hash aditivo para posiciones de ajedrez |
+| **Enroque** | Movimiento especial del rey y torre |
+| **En passant** | Captura especial de peón |
+| **Move generation** | Generación de movimientos legales |
+| **Eval** | Función de evaluación estática |
+| **NPS** | Nodos por segundo (métrica de performance) |
+| **Cache line** | Unidad de transferencia de cache (~64 bytes) |
+| **Spatial locality** | Patrón de acceso a memoria adyacente |
+| **Temporal locality** | Reutilización de datos recently accessed |

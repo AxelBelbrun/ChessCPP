@@ -188,3 +188,121 @@ Genera un número aleatorio de 64 bits.
 - El caso especial en `getLlegada` (línea 36-38) para "captura al paso" debería documentarse mejor o usar constantes nombradas
 - Los tipos `int8` y `U64` son fundamentales para todo el programa - considerar si pertenecen a este módulo o a uno más global
 - Las operaciones de jugadas usan magic numbers (6, 12, 63, 15) - idealmente deberían ser constantes con nombres descriptivos
+
+---
+
+## Información Técnica para Optimización
+
+### Complejidad Algorítmica
+
+| Función | Complejidad | Notas |
+|---------|-------------|-------|
+| `setBit` | O(1) | Operaciones bitwise de costo constante |
+| `LSB` | O(1) | `__builtin_ffsll` es O(1) en práctica (instrucción CPU) |
+| `crearJugada` | O(1) | 3 operaciones bitwise |
+| `getLlegada` | O(1) | 2 shifts + 1 AND + 1 suma + condición |
+| `getSalida` | O(1) | 1 AND + 1 suma |
+| `getTipoDeJugada` | O(1) | 1 shift + 1 AND |
+| `espejarCasilla` | O(1) | Acceso a array con índice |
+| `random_custom` | O(1) | Depende de implementación (posiblemente RNG) |
+
+---
+
+### Análisis de Rendimiento por Función
+
+#### `setBit`
+- **Operaciones realizadas:** 1 shift, 1 negación (opcional), 1 AND/OR
+- **Instrucciones CPU típicas:** `shl`, `not`, `and`, `or`
+- **Costo estimado:** 3-5 ciclos de CPU
+- **Observaciones:** 
+  - La función recibe `int pos` pero calcula `(pos-1)` - posible pérdida de rendimiento por resta
+  - El parámetro `bit` es `int` pero solo se usa como 0/1 - podría ser `bool`
+  - **Optimización potencial:** Si `pos` es 1-indexed, convertir a 0-indexed en caller para eliminar resta
+
+#### `LSB`
+- **Operaciones realizadas:** `__builtin_ffsll()` + 1 resta + 1 AND
+- **Instrucciones CPU típicas:** `tzcnt` o `bsf` (x86), `rbit` + `clz` (ARM)
+- **Costo estimado:** 1-3 ciclos de CPU (instrucción nativa)
+- **Observaciones:**
+  - `__builtin_ffsll` se compila a instrucción CPU nativa (`BSF` o `TZCNT` en x86)
+  - La técnica `num & (num - 1)` es una de las formas más eficientes de clear lowest bit
+  - **Posible mejora:** Usar directamente `__builtin_ctzll()` si no se necesita modificar `num`
+  - **Riesgo:** Retorna 0 cuando `num == 0` - verificar que callers manejen este caso
+
+#### `crearJugada`
+- **Operaciones realizadas:** 3 operaciones bitwise (2 shifts, 2 OR)
+- **Costo estimado:** 3-5 ciclos de CPU
+- **Observaciones:**
+  - Usa `salida - 1` y `llegada - 1` para convertir de 1-indexed a 0-indexed
+  - **Optimización potencial:** Si los argumentos ya vienen en 0-indexed, eliminar restas
+  - **Observación:** Inicializa `jugada = 0` innecesario (OR con 0 no cambia valor)
+
+#### `getLlegada`
+- **Operaciones realizadas:** 1 shift, 1 AND con 63, 1 suma, 1 shift, 1 AND con 15, 1 comparación
+- **Costo estimado:** 5-8 ciclos de CPU
+- **Observaciones:**
+  - Caso especial para "captura al paso" añade branching непредсказуемо
+  - **Problema de rendimiento:** El branching impredecible puede costar 10-20 ciclos si no se predice bien
+  - La máscara `& 63` es equivalente a `& 0x3F` - el compilador debería optimizarlo
+  - **Optimización potencial:** Extraer el tipo de jugada primero para evitar trabajo extra en caso especial
+
+#### `getSalida`
+- **Operaciones realizadas:** 1 AND con 63, 1 suma
+- **Costo estimado:** 2-3 ciclos de CPU
+- **Observaciones:** Muy eficiente, una de las funciones más rápidas
+
+#### `getTipoDeJugada`
+- **Operaciones realizadas:** 1 shift, 1 AND con 15
+- **Costo estimado:** 2-3 ciclos de CPU
+- **Observaciones:** Muy eficiente, usar `& 15` en lugar de `& 0xF` es idiomático
+
+#### `espejarCasilla`
+- **Operaciones realizadas:** 1 resta, 1 acceso a array, 1 resta
+- **Costo estimado:** 3-5 ciclos (depende de cache)
+- **Observaciones:**
+  - Acceso a memoria - el array debe estar en cache para máximo rendimiento
+  - **Optimización potencial:** Si se usa frecuentemente, podría inlinearse con cálculo directo: `casilla ^ 7` (para filas horizontales) - verificar mapeo del array
+
+---
+
+### Patrones de Uso y Frecuencia
+
+Basado en el diseño del módulo, las funciones más críticas para optimización son:
+
+1. **`LSB`** - Probablemente la función más llamada en generación de movimientos (recorrer bits de atacantes/tablero)
+2. **`setBit`** - Alta frecuencia en manipulación del tablero
+3. **`crearJugada` / `getSalida` / `getLlegada`** - Frecuentes en generación y ejecución de jugadas
+
+### Problemas de Rendimiento Identificados
+
+| Problema | Ubicación | Impacto | Sugerencia |
+|----------|-----------|---------|------------|
+| Magic numbers sin nombrar | Líneas 27-31, 36-39, 43, 49 | Mantenibilidad, posible error | Definir constantes `SALIDA_BITS`, `LLEGADA_SHIFT`, etc. |
+| Conversiones 1-indexed a 0-indexed | Múltiples funciones | Resta adicional por llamada | Estandarizar a 0-indexed internamente |
+| Branch impredecible | `getLlegada` líneas 36-38 | 10-20 ciclos si mispredict | Reestructurar para evitar branch o usar lookup table |
+| Acoplamiento con `constantes.h` | `espejarCasilla` | Cache misses si header cambia | Pasar tabla como parámetro o hacer lookup inline |
+
+---
+
+### Consideraciones de Portabilidad
+
+- `__builtin_ffsll()` es extensión de GCC/Clang - disponible en MSVC como `_BitScanForward64`
+- `U64` es `unsigned long long` - garantizado como 64 bits por estándar C++
+- El shift `1ULL << (pos-1)` asegura promoción a 64 bits antes del shift
+
+---
+
+### Inline y Compilación
+
+- Todas las funciones son candidatas para `inline` o `static inline` 
+- Considerar marcar como `inline` en header si son llamadas frecuentemente
+- El compilador puede no inlinear si no está declarado en el mismo archivo de compilación
+
+---
+
+### Notas Adicionales para Análisis
+
+1. **Hot path**: `LSB` es la función más crítica - cualquier mejora aquí tiene máximo impacto
+2. **Bitboard operations**: Este módulo es típico de motores de ajedrez con representación bitboard - verificar si hay más operaciones bitboard que podrían agregarse
+3. **Memory locality**: `espejarCasilla` accede a array - verificar tamaño y cache locality
+4. **Branch prediction**: El caso especial en `getLlegada` es unpredictable - evaluar frecuencia real de "captura al paso"

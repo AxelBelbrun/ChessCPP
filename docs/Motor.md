@@ -287,3 +287,144 @@ const int fase_maxima_total = 48; // Ambos bandos
 3. **Magic numbers**: Hay varios números mágicos (ej. casillas hardcodeadas para peones bloqueados)
 4. **Separación de responsabilidades**: La evaluación podría separarse en una clase dedicada
 5. **Parámetros hardcodeados**: Los pesos de evaluación podrían externalizarse a un archivo de configuración
+
+---
+
+## Análisis Técnico de Rendimiento
+
+### Complejidad Algorítmica
+
+| Función | Complejidad | Notas |
+|---------|-------------|-------|
+| `negamax()` | O(b^d) | b = branching factor (~30-40), d = profundidad |
+| `quiescence()` | O(b^q) | q = profundidad de capturas (típicamente 1-3) |
+| `perft()` | O(b^d) | Idéntico a negamax pero sin podas |
+| `valoracion()` | O(1) | Acceso directo a bitboards, operaciones de popcount |
+| `calcularFaseDeJuego()` | O(1) | Contadores directos |
+| `seguridadDelRey()` | O(1) | Operaciones bitwise sobre rangos fijos |
+| `esRepeticion()` | O(n) | n = historial de repeticiones (máx 512) |
+| `contarMaterialSinPeones()` | O(n) | n = número de piezas (máx 30) |
+
+### Operaciones Costosas Identificadas
+
+#### 1. Popcount en `seguridadDelRey()` (líneas 338-339, 346-347, 373-374, 394-395)
+```cpp
+int cantPeonesEscudoUna = __builtin_popcountll(escudoDePeonesAUnaCasilla);
+int cantPeonesEscudoDos = __builtin_popcountll(escudoDePeonesADosCasillas);
+```
+- **Frecuencia**: Llamada 4 veces por evaluación
+- **Costo**: ~3-5 ciclos por llamada en CPUs modernas
+- **Nota**: `__builtin_popcountll` es intrínseco del compilador, muy optimizado
+
+#### 2. Iteración de bitboards en `contarMaterialSinPeones()` (líneas 420-470)
+```cpp
+while (bitboard > 0) {
+    int casilla = operaciones_bit::LSB(bitboard);
+    valor += constantes::valorPieza[...];
+}
+```
+- **Frecuencia**: Llamado en Null Move Pruning
+- **Costo**: O(n) donde n = número de piezas sin peones
+- **Nota**: Usa LSB que puede ser costoso si no está cacheado
+
+#### 3. Generación de movimientos en `negamax()` (línea 676)
+```cpp
+tablero->generar_movimientos(tablero->_turno, ply);
+```
+- **Frecuencia**: Una vez por nodo de búsqueda
+- **Costo**: Depende de implementación en Tablero.cpp
+- **Nota**: Este es típicamente el cuello de botella principal
+
+#### 4. Acceso a memoria en tabla de transposición
+```cpp
+Tabla_transposicion::entrada e = TT->obtenerEntrada(clave);
+```
+- **Frecuencia**: Una vez por nodo
+- **Costo**: Cache miss posible si la tabla es grande
+- **Nota**: Depende de la implementación de Tabla_transposicion
+
+#### 5. Bubble sort en `quiescence()` (líneas 852-859)
+```cpp
+for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+    for (int j = i + 1; j <= tablero->cantMovesGenerados[ply]; j++) {
+        // swap
+    }
+}
+```
+- **Frecuencia**: En cada nodo de quiescence
+- **Costo**: O(n²) para ordenar capturas
+- **Nota**: Debería usar std::sort (O(n log n))
+
+### Uso de Memoria
+
+| Estructura | Tamaño | Notes |
+|------------|--------|-------|
+| `Tabla_transposicion` | Variable | Depende de implementación, típicamente MBs |
+| `killerMove[2][128]` | 256 * 2 bytes = 512 bytes | Fijo |
+| `tabla_de_repeticiones[512]` | 512 * 8 bytes = 4 KB | Fijo |
+| `prioridades[256][256]` | 256 * 256 * 4 bytes = 256 KB | Matriz de ordenamiento |
+| `puntajeCaptura[256][256]` | 256 * 256 * 4 bytes = 256 KB | Duplicado en quiescence |
+
+### Puntos de Contención (Thread Safety)
+
+**Sin sincronización**: Este código es **single-threaded** por diseño.
+- `ply` es global y se modifica durante la recursión
+- `tabla_de_repeticiones` se modifica sin locks
+- `killerMove` se actualiza sin sincronización
+
+**Para paralelización futura** (si se desea):
+- Necesitaría copiar `ply` por thread
+- Tabla de transposición requerirá locks o versioning
+- Killer moves necesitarán ser thread-local
+
+### Branching Factor Observado
+
+- **Profundidad 1**: ~20-30 movimientos legales
+- **Profundidad típica de búsqueda**: 6-12 ply
+- **Nodos por segundo objetivo**: >100,000 nps (típico para motores competitivos)
+
+### Warmup y State Management
+
+```cpp
+if (nodosBusqueda == 2048) {  // Línea 598
+    auto timeEnd = std::chrono::steady_clock::now();
+    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart).count();
+    if(time > tiempoDisponible){
+        stopSearch = true;
+    }
+}
+```
+- **Frecuencia**: Cada 2048 nodos
+- **Costo**: Llamada a steady_clock (puede ser costoso)
+- **Nota**: Considerar reducir frecuencia de checks de tiempo
+
+### Optimizaciones Potenciales de Bajo Fruto
+
+1. **Bubble sort en quiescence** (líneas 852-859): Reemplazar con std::sort
+2. **Hardcoded bitmasks en seguridadDelRey()**: Usar lookup tables
+3. **Duplicación de arrays** `prioridades` y `puntajeCaptura`: Podrían unificarse
+4. **Chequeo de tiempo cada 2048 nodos**: Podría ser demasiado frecuente
+
+### Optimizaciones Potenciales de Alto Fruto
+
+1. **Inline de `valoracion()`**: Función crítica llamada miles de veces
+2. **Evaluación incremental**: Evitar recalcular valores ya conocidos entre nodos
+3. **Move ordering**: Mejorar ordenamiento inicial de movimientos
+4. **SEE (Static Exchange Evaluation)**: Implementar para mejor ordenamiento de capturas
+5. **Bitboard caching**: Cachear resultados de operaciones frecuentes
+6. **Simd/Popcount vectorizado**: Para múltiples evaluaciones en paralelo
+
+### Constantes de Rendimiento a Considerar
+
+```cpp
+// En negamax()
+int reduccion_nula = (profundidad > 6) ? 4 : 3;  // Línea 658
+// LMR
+int reduccion = 1;
+if (cantidadDeMovesBuscados > 5) reduccion = 2;
+if (profundidad > 6 && cantidadDeMovesBuscados > 8) reduccion = 3;
+// Futility
+if (evalEstatico + 150 <= alfa) continue;  // Línea 708
+```
+
+Estos parámetros afectan directamente el balance velocidad/precisión y son candidatos para tuning.

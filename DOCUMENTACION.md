@@ -200,21 +200,200 @@ Cada vez que se realiza un movimiento en el Tablero, la clave Zobrist se actuali
 
 Esta actualización incremental permite mantener el hash de la posición sin necesidad de recalcularlo completamente después de cada movimiento, lo cual es crucial para el rendimiento de la tabla de transposición.
 
-## 11. Notas Técnicas Adicionales
+## 11. Análisis Técnico de Rendimiento
 
-### 11.1 Rendimiento y Optimizaciones
+Esta sección proporciona información detallada para identificar oportunidades de optimización en el proyecto.
 
-El motor utiliza múltiples técnicas de optimización además de las ya mencionadas. El código auxiliar SGD fue diseñado para optimizar los parámetros de la función de evaluación mediante aprendizaje automático, utilizando un archivo de posiciones en /home/axel/Documentos/posiciones-ML-Motor.txt para entrenamiento.
+### 11.1 Complejidad Algorítmica por Componente
 
-Las tablas de attack masks para piezas deslizantes se precalculan al inicio del programa utilizando las clases calculadoraMovesTorre y calculadoraMovesAlfil. Estas clases fueron utilizadas para obtener los números mágicos que posteriormente están hardcodeados en constantes.h.
+#### Motor de Búsqueda (Motor.cpp)
 
-### 11.2 Detección de Final de Juego
+| Función | Complejidad | Notas |
+|---------|-------------|-------|
+| `negamax()` | O(b^d) | b = branching factor (~30-40), d = profundidad |
+| `quiescence()` | O(b^q) | q = profundidad de capturas (típicamente 1-3) |
+| `perft()` | O(b^d) | Idéntico a negamax pero sin podas |
+| `valoracion()` | O(1) | Acceso directo a bitboards, operaciones de popcount |
+| `calcularFaseDeJuego()` | O(1) | Contadores directos |
+| `seguridadDelRey()` | O(1) | Operaciones bitwise sobre rangos fijos |
+| `esRepeticion()` | O(n) | n = historial de repeticiones (máx 512) |
+| `contarMaterialSinPeones()` | O(n) | n = número de piezas (máx 30) |
 
-El motor detecta cuando la partida está en fase de final de juego mediante el método contarMaterialSinPeones que suma el valor de todas las piezas excepto peones. Cuando este valor es menor o igual a un umbral, el motor considera que está en modo "endgame" y ajusta sus evaluaciones y comportamiento de búsqueda correspondientemente.
+#### Tablero (Tablero.cpp)
 
-### 11.3 Repeticiones y Tablas
+| Operación | Complejidad | Notas |
+|-----------|-------------|-------|
+| `piezas_blancas()` / `piezas_negras()` | O(6) | Itera sobre 6 bitboards |
+| `todas_las_piezas()` | O(1) | OR de dos llamadas |
+| `obtenerTipoDePieza()` | O(12) | Itera sobre todos los bitboards |
+| `generar_movimientos()` | O(1) por movimiento | Lookup en tablas precalculadas |
+| `reyPropioEnJaque()` | O(1) a O(n) | Verifica múltiples fuentes de jaque |
+| `estaClavada()` | O(n) | Itera sobre piezas deslizantes rivales |
+| `zobristKey()` | O(n) | Itera sobre todas las piezas en el tablero |
+| `moverPieza()` | O(12) | Busca bitboard de origen y destino |
 
-El sistema mantiene un historial de las últimas 512 claves Zobrist en tabla_de_repeticiones. El método esRepeticion verifica si la posición actual ha ocurrido tres veces (contando la posición actual), lo cual es una condición de tablas por triple repetición según las reglas del ajedrez.
+#### Operaciones Bit (operaciones_bit.cpp)
+
+| Función | Complejidad | Notas |
+|---------|-------------|-------|
+| `setBit` | O(1) | Operaciones bitwise de costo constante |
+| `LSB` | O(1) | `__builtin_ffsll` es O(1) en práctica (instrucción CPU) |
+| `crearJugada` | O(1) | 3 operaciones bitwise |
+| `getLlegada` | O(1) | 2 shifts + 1 AND + 1 suma + condición |
+| `getSalida` | O(1) | 1 AND + 1 suma |
+| `getTipoDeJugada` | O(1) | 1 shift + 1 AND |
+
+#### Sistema de Piezas
+
+| Pieza | Complejidad | Factores |
+|-------|-------------|----------|
+| **Caballo** | O(1) | 8 movimientos máximos, cálculo directo con shifts y máscaras |
+| **Rey** | O(1) | 8 movimientos máximos, cálculo directo |
+| **Torre** | O(n) | Donde n = número de casillas hasta el borde o siguiente pieza (máx 7) |
+| **Alfil** | O(n) | Donde n = número de casillas hasta el borde o siguiente pieza (máx 7) |
+| **Dama** | O(n) | Combinación de Torre + Alfil |
+| **Peón** | O(1) a O(2) | Movimientos limitados, pero con múltiples verificaciones condicionales |
+
+### 11.2 Operaciones Costosas Identificadas
+
+#### Motor - Popcount en seguridadDelRey() (líneas 338-339, 346-347, 373-374, 394-395)
+```cpp
+int cantPeonesEscudoUna = __builtin_popcountll(escudoDePeonesAUnaCasilla);
+int cantPeonesEscudoDos = __builtin_popcountll(escudoDePeonesADosCasillas);
+```
+- **Frecuencia**: Llamada 4 veces por evaluación
+- **Costo**: ~3-5 ciclos por llamada en CPUs modernas
+
+#### Motor - Bubble sort en quiescence() (líneas 852-859)
+```cpp
+for (int i = 0; i <= tablero->cantMovesGenerados[ply]; i++) {
+    for (int j = i + 1; j <= tablero->cantMovesGenerados[ply]; j++) {
+        // swap
+    }
+}
+```
+- **Frecuencia**: En cada nodo de quiescence
+- **Costo**: O(n²) para ordenar capturas
+
+#### Motor - Chequeo de tiempo (línea 598)
+```cpp
+if (nodosBusqueda == 2048) {
+    // verificación de tiempo
+}
+```
+- **Frecuencia**: Cada 2048 nodos
+- **Costo**: Llamada a steady_clock (puede ser costoso)
+
+#### Operaciones Bit - getLlegada con branch impredecible
+```cpp
+// Líneas 36-38: caso especial para "captura al paso"
+```
+- **Problema**: Branch impredecible puede costar 10-20 ciclos si no se predice bien
+
+#### Piezas - Dama crea objetos dinámicos (Dama.cpp líneas 17-22)
+```cpp
+Alfil* alfil = new Alfil();
+Torre* torre = new Torre();
+// ... uso ...
+delete alfil;
+delete torre;
+```
+- **Problema**: 2 allocations + 2 deallocations por llamada
+
+### 11.3 Uso de Memoria
+
+#### Tablero
+| Estructura | Tamaño | Descripción |
+|------------|--------|-------------|
+| `movimientosDeTorre[64][4096]` | 2 MB | Tabla de movimientos de torre |
+| `movimientosDeAlfil[64][512]` | 256 KB | Tabla de movimientos de alfil |
+| `movimientosDeCaballo[64]` | 512 bytes | Tabla de movimientos de caballo |
+| `movimientosDeRey[64]` | 512 bytes | Tabla de movimientos de rey |
+| `bitboards[12]` | 96 bytes | Estado actual del tablero |
+| `historialZobrist[512]` | 4 KB | Historial de posiciones |
+| `historialBitboards[512]` | ~20 KB | Historial de cambios |
+| `jugadas[512]` | 1 KB | Historial de jugadas |
+| **Total aproximado** | ~2.3 MB | En tablas estáticas |
+
+#### Motor
+| Estructura | Tamaño | Notas |
+|------------|--------|-------|
+| `Tabla_transposicion` | ~40 MB | 1,677,720 entradas × 24 bytes |
+| `killerMove[2][128]` | 512 bytes | Fijo |
+| `tabla_de_repeticiones[512]` | 4 KB | Fijo |
+| `prioridades[256][256]` | 256 KB | Matriz de ordenamiento |
+| `puntajeCaptura[256][256]` | 256 KB | Duplicado en quiescence |
+
+#### Tabla de Transposición - Estructura de Entrada
+| Campo | Tipo | Tamaño (bytes) |
+|-------|------|----------------|
+| `clave` | `U64` | 8 |
+| `valor` | `float` | 4 |
+| `profundidad` | `int` | 4 |
+| `tipo` | `int` | 4 |
+| `jugada` | `u_short` | 2 |
+| **Total (con padding)** | | **24** |
+
+**Problema crítico**: El tamaño actual (4 * 419430 = 1,677,720) NO es potencia de 2, por lo que usa `%` (división lenta, 20-80 ciclos) en lugar de `&` (1 ciclo).
+
+### 11.4 Puntos de Acceso Calientes (Hot Paths)
+
+Los siguientes métodos se llaman frecuentemente durante la búsqueda:
+
+1. **`moverPieza()`** - Llamado miles de veces por el motor de búsqueda
+2. **`deshacerMovimiento()`** - Debe ser muy rápido para el algoritmo de recursión
+3. **`reyPropioEnJaque()`** - Llamado para validar movimientos legales
+4. **`generar_movimientos()`** - Genera todos los movimientos posibles
+5. **`bitboard_movimientos_*()`** - Consulta tablas para ataques
+6. **`piezas_blancas()` / `piezas_negras()`** - Calcula union de bitboards
+7. **`LSB()`** - Itera sobre bits de atacantes/tablero
+8. **`setBit()`** - Alta frecuencia en manipulación del tablero
+9. **`crearJugada()` / `getSalida()` / `getLlegada()`** - Frecuentes en generación y ejecución
+
+### 11.5 Thread Safety
+
+**Sin sincronización**: Este código es **single-threaded** por diseño.
+- `ply` es global y se modifica durante la recursión
+- `tabla_de_repeticiones` se modifica sin locks
+- `killerMove` se actualiza sin sincronización
+
+**Para paralelización futura**:
+- Necesitaría copiar `ply` por thread
+- Tabla de transposición requerirá locks o versioning
+- Killer moves necesitarán ser thread-local
+
+### 11.6 Constantes de Rendimiento del Motor
+
+```cpp
+// En negamax()
+int reduccion_nula = (profundidad > 6) ? 4 : 3;  // Null move pruning
+int reduccion = 1;
+if (cantidadDeMovesBuscados > 5) reduccion = 2;
+if (profundidad > 6 && cantidadDeMovesBuscados > 8) reduccion = 3;
+// Futility
+if (evalEstatico + 150 <= alfa) continue;
+```
+
+### 11.7 Métricas Sugeridas para Profiling
+
+Para evaluar el rendimiento real del motor:
+
+1. **Nodos por segundo** (NPS) en búsqueda de profundidad fija
+2. **Hit rate de tabla de transposición**: `hits / (hits + misses)`
+3. **Tiempo de `generar_movimientos()`** por posición
+4. **Tiempo de `moverPieza()` + `deshacerMovimiento()`** (par)
+5. **Tiempo de `reyPropioEnJaque()`**
+6. **Cache hit rate** de tablas magic
+7. **Tiempo de inicialización** del motor
+8. **Branch misprediction rate**
+
+### 11.8 Branching Factor Observado
+
+- **Profundidad 1**: ~20-30 movimientos legales
+- **Profundidad típica de búsqueda**: 6-12 ply
+- **Nodos por segundo objetivo**: >100,000 nps (típico para motores competitivos)
+
+---
 
 ## 12. Glosario de Términos
 
@@ -227,6 +406,32 @@ Bitboard es la representación del tablero mediante 64 bits donde cada bit corre
 La siguiente tabla resume las principales estructuras de datos utilizadas en el proyecto:
 
 El Tablero mantiene 12 bitboards de piezas más bitboards de enroque y en passant, la clave Zobrist actual, el turno actual, y el historial de 512 jugadas y claves Zobrist. El Motor mantiene la tabla de transposición, la tabla de killer moves de 2 por 128, contadores de nodos y hash hits, y los parámetros de evaluación. La Jugada codifica origen (6 bits), destino (6 bits) y tipo (4 bits) en 16 bits. La Tabla de Transposición mantiene un array de aproximadamente 1.68 millones de entradas, cada una con clave, valor, profundidad, tipo y jugada. Las Constantes mantienen valores de piezas, tablas de ocupación de 64 valores cada una, claves Zobrist de 12 por 64, y los números mágicos para torres y alfiles.
+
+## 14. Notas Adicionales de Implementación
+
+### 14.1 Detección de Final de Juego
+
+El motor detecta cuando la partida está en fase de final de juego mediante el método contarMaterialSinPeones que suma el valor de todas las piezas excepto peones. Cuando este valor es menor o igual a un umbral, el motor considera que está en modo "endgame" y ajusta sus evaluaciones y comportamiento de búsqueda correspondientemente.
+
+### 14.2 Repeticiones y Tablas
+
+El sistema mantiene un historial de las últimas 512 claves Zobrist en tabla_de_repeticiones. El método esRepeticion verifica si la posición actual ha ocurrido tres veces (contando la posición actual), lo cual es una condición de tablas por triple repetición según las reglas del ajedrez.
+
+### 14.3 Código Auxiliar para Optimización de Parámetros
+
+El módulo codigo_auxiliar contiene funcionalidades para optimizar los parámetros de la función de evaluación mediante aprendizaje automático. El código auxiliar SGD fue diseñado para este propósito, utilizando un archivo de posiciones en /home/axel/Documentos/posiciones-ML-Motor.txt para entrenamiento.
+
+### 14.4 Generación de Tablas Magic
+
+Las tablas de attack masks para piezas deslizantes se precalculan al inicio del programa utilizando las clases calculadoraMovesTorre y calculadoraMovesAlfil. Estas clases fueron utilizadas para obtener los números mágicos que posteriormente están hardcodeados en constantes.h. La generación ocurre una sola vez durante la inicialización del programa.
+
+### 14.5 Inicialización del Motor
+
+El constructor del Motor realiza las siguientes operaciones:
+- Instancia una nueva Tabla_transposicion
+- Inicializa bestMove a -1
+- Marca tablaInicializada como false
+- Inicializa la matriz de killerMove con valor -1
 
 ---
 

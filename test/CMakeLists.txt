@@ -3,8 +3,7 @@ file(GLOB SRC_TEST_FILES
 )
 
 add_executable(chesscpp-test
- 	${SRC_TEST_FILES}
+  ${SRC_TEST_FILES}
 )
-
 
 

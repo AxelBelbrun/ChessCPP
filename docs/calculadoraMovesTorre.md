@@ -110,3 +110,94 @@ Un número mágico es válido si y solo si produce un índice único para cada c
 3. Llamar a obtenerNumeroMagico() para encontrar el número mágico válido
 4. Usar el número mágico en tiempo de ejecución para indexar tablas de movimientos
 ```
+
+---
+
+## 8. Análisis Técnico para Optimización
+
+### 8.1 Complejidad Algorítmica
+
+| Método | Complejidad Temporal | Complejidad Espacial |
+|--------|----------------------|---------------------|
+| `masksTableroVacio()` | O(64 × C_atacando) | O(64) |
+| `masksPiezasBloqueando()` | O(2^n × n) | O(2^n) |
+| `obtenerNumeroMagico()` | O(Intentos × 2^n × C_mover) | O(4096) |
+
+**Donde**:
+- `n` = número de casillas que pueden bloquear (varía por posición, máximo ~14 para esquinas)
+- `C_atacando` = costo de `Torre::generar_attack_mask()`
+- `C_mover` = costo de `Torre::generar_movimientos_legales()`
+
+### 8.2 Asignaciones de Memoria Dinámica
+
+**Problemáticas identificadas**:
+
+| Ubicación | Tipo de asignación | Impacto |
+|-----------|---------------------|---------|
+| Línea 17: `Torre* torre = new Torre()` | `new` en bucle (64 iteraciones) | Fragmentación de heap |
+| Línea 52: `Torre* torre = new Torre()` | `new` dentro de función llamada repetidamente | Sin reuse de objeto |
+| Línea 14, 34, 48, 49: `std::vector` | Reallocations implícitas | Copies innecesarias |
+| Línea 35: `pow(2, contador)` | Uso de `double` para enteros | Imprecisión potencial |
+
+### 8.3 Operaciones Costosas
+
+1. **Línea 35**: `pow(2, contador)` - `pow()` trabaja con `double` y es significativamente más lento que `1ULL << contador`
+2. **Línea 74**: Generación de número aleatorio con triple mascarao `mt() & mt() & mt()` - diseñado para setear más bits, pero reduce entropía efectiva
+3. **Líneas 77-96**: Bucle anidado con hasta 16,384 iteraciones (2^14 × 10M en worst case)
+4. **Línea 80**: Llamada a `generar_movimientos_legales()` repetida por cada configuración - esta función se invoca miles de veces por intento
+
+### 8.4 Cuellos de Botella Identificados
+
+1. **Allocations dinámicas repetidas** (líneas 17, 52): Crear y destruir objetos `Torre` en cada iteración
+2. **Recálculo de masksTableroVacio()** (línea 48): Se recalcula en cada llamada a `obtenerNumeroMagico()`, debería calcularse una sola vez
+3. **Recálculo de masksPiezasBloqueando()** (línea 49): Mismo problema que arriba
+4. **Limpieza de tablaDeHash** (líneas 87-89): Bucle de 4096 iteraciones en cada colisión
+
+### 8.5 Métricas de Rendimiento Esperadas
+
+- **Tiempo por llamada a `masksTableroVacio()`**: ~1-5 ms (64 iteraciones)
+- **Tiempo por llamada a `masksPiezasBloqueando()`**: Variable según n (2^n configuraciones)
+- **Tiempo por `obtenerNumeroMagico()`**: Minutos a horas (10M intentos × 2^n × C_mover)
+- **Promedio de intentos hasta encontrar válido**: Varía por posición; algunas posiciones son más difíciles
+
+### 8.6 Uso de CPU y Cache
+
+- **tablaDeHash[4096]**: 32 KB (4096 × 8 bytes) - cabe en L1 cache
+- **Vector masks**: Hasta ~128 KB (2^14 × 8 bytes) - excede L1, entra en L2
+- **Operaciones bit**: Todas las operaciones trabajan con registros de 64 bits - cache-friendly
+- **Prefetching**: No hay acceso secuencial claro que permita prefetching efectivo
+
+### 8.7 Oportunidades de Optimización Identificadas
+
+| Área | Optimización Potencial | Impacto Estimado |
+|------|------------------------|------------------|
+| Línea 35 | Reemplazar `pow(2,n)` por `1ULL << n` | 10-50x más rápido |
+| Línea 17, 52 | Usar stack allocation o reuse de objeto Torre | Elimina allocation overhead |
+| Línea 48-49 | Calcular masksTableroVacio() una vez (static) | Elimina 64 × N llamadas |
+| Línea 49 | Calcular masksPiezasBloqueando() una vez por attack_mask | Elimina 2^n × N llamadas |
+| Líneas 87-89 | Usar `memset()` para limpiar tablaDeHash | ~10x más rápido |
+| Línea 74 | Usar solo `mt()` o `mt() ^ (mt() << 1)` | Mayor entropía con menos operaciones |
+| Parámetro `shifteo` | Implementar uso del parámetro | Podría reducir espacio de búsqueda |
+
+### 8.8 Consideraciones de Seguridad y Correctitud
+
+- **Línea 30**: `operaciones_bit::LSB()` debe manejar correctamente el caso cuando `attack_mask = 0`
+- **Línea 105**: Retornar `0` como número mágico podría ser problemático - evaluar usar valor centinela
+- **Líneas 14, 17**: Rango de casillas 1-64 - verificar que `Torre` use indexación 1-based consistente
+
+### 8.9 Código Muerto y Comentarios
+
+- **Línea 55-68**: Código comentado con estrategias alternativas de generación
+- **Línea 53**: Objeto `Tablero` comentado - verificar si es necesario
+- **Línea 55**: Parámetro `shifteo` no utilizado - evaluar remover o implementar
+
+---
+
+## 9. Recomendaciones para Refactoring
+
+1. **Extraer cálculos重复itivos**: Masks de tablero vacío y piezas bloqueando deberían calcularse una sola vez y almacenarse
+2. **Eliminar allocations dinámicas**: Usar objetos en stack o pooling
+3. **Usar operaciones enteras**: Reemplazar `pow()` con shifts
+4. **Optimizar limpieza de hash**: Usar `memset` o mantener tabla en stack
+5. **Considerar paralelización**: La búsqueda de número mágico es paralelizable (múltiples intentos independientes)
+6. **Evaluar pre-cálculo**: Los números mágicos podrían calcularse en tiempo de compilación o en un paso de inicialización separado

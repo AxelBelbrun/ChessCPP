@@ -583,4 +583,246 @@ Existe código commented-out extenso en `Peon.cpp` que parece ser una implementa
 
 ---
 
+## 13. Análisis Técnico de Rendimiento
+
+Esta sección proporciona información técnica detallada para identificar oportunidades de optimización en el sistema de piezas.
+
+### 13.1 Complejidad Algorítmica por Operación
+
+#### Generación de Movimientos por Pieza
+
+| Pieza | Complejidad | Factores |
+|-------|-------------|----------|
+| **Caballo** | O(1) | 8 movimientos máximos, cálculo directo con shifts y máscaras |
+| **Rey** | O(1) | 8 movimientos máximos, cálculo directo |
+| **Torre** | O(n) | Donde n = número de casillas hasta el borde o siguiente pieza (máx 7) |
+| **Alfil** | O(n) | Donde n = número de casillas hasta el borde o siguiente pieza (máx 7) |
+| **Dama** | O(n) | Combinación de Torre + Alfil |
+| **Peón** | O(1) a O(2) | Movimientos limitados, pero con múltiples verificaciones condicionales |
+
+#### Complejidad por Función Específica
+
+| Función | Complejidad | Notas |
+|---------|-------------|-------|
+| `movimientos_arriba/abajo` | O(7) max | Itera hasta 7 casillas |
+| `movimientos_izquierda/derecha` | O(7) max | Itera hasta 7 casillas |
+| `movimientos_legales_norte/este/sur/oeste` (Alfil) | O(7) max | Itera hasta 7 casillas diagonales |
+| `hayCapturaAlPaso` | O(1) | Solo verifica la última jogada |
+| `agregarPromociones` | O(k) | k = número de promociones, usualmente 1-4 |
+
+### 13.2 Operaciones Bit Utilizadas
+
+El código hace uso intensivo de operaciones bit. A continuación se documentan las operaciones clave:
+
+#### Operaciones de Desplazamiento (Shifts)
+
+```cpp
+// Peón blanco
+peones << 8           // Avance 1 fila
+peones << 16          // Avance doble desde fila 2
+
+// Peón negro
+peones >> 8           // Avance 1 fila
+peones >> 16          // Avance doble desde fila 7
+
+// Caballo - 8 direcciones
+b << 17               // 2 arriba, 1 derecha
+b << 10               // 1 arriba, 2 derecha
+b >> 6                // 1 abajo, 2 derecha
+b >> 15               // 2 abajo, 1 derecha
+// ... etc
+```
+
+#### Máscaras de Bloqueo
+
+```cpp
+// Eliminación de bordes de tablero
+~HFile                // Excluye columna H
+~AFile                // Excluye columna A
+~HFile & ~GFile      // Excluye columnas G y H
+~BFile & ~AFile      // Excluye columnas A y B
+
+// Filtros de fila
+& fila8               // Piezas en fila 8
+& fila1               // Piezas en fila 1
+& ~fila8              // Excluye fila 8
+```
+
+### 13.3 Patrones de Iteración en Bitboards
+
+#### Patrón: Iteración sobre bits activos
+
+```cpp
+while(bitboardMovimientos) {
+    int casilla = operaciones_bit::LSB(bitboardMovimientos);
+    // procesar...
+    bitboardMovimientos &= bitboardMovimientos - 1;  // Clear LSB
+}
+```
+
+**Frecuencia de uso:** Alta en `agregarAvances`, `agregarCapturas`, `agregarPromociones`, `obtener_movimientos` (Caballo).
+
+**Costo:** O(k) donde k = número de bits activos en el bitboard.
+
+#### Patrón: Iteración direccional (sliding pieces)
+
+```cpp
+int casillaSiguiente = casillaDeSalida + 8;
+while (casillaSiguiente <= 64) {
+    U64 casillaSiguienteBitboard = operaciones_bit::setBit(0L,casillaSiguiente,1);
+    if ((casillaSiguienteBitboard & piezasPropias) > 0) break;
+    else if ((casillaSiguienteBitboard & piezasRivales) > 0) {
+        movimientos = operaciones_bit::setBit(movimientos,casillaSiguiente,1);
+        break;
+    }
+    else {
+        movimientos = operaciones_bit::setBit(movimientos,casillaSiguiente,1);
+    }
+   casillaSiguiente += 8;
+}
+```
+
+**Frecuencia:** Alta en Torre y Alfil (4 direcciones cada uno).
+
+### 13.4 Operaciones con Llamadas a Funciones Externas
+
+#### Dependencias Identificadas
+
+| Función Local | Dependencia Externa | Ubicación |
+|---------------|---------------------|------------|
+| `LSB()` | `operaciones_bit::LSB` | `operaciones_bit.h` |
+| `setBit()` | `operaciones_bit::setBit` | `operaciones_bit.h` |
+| `crearJugada()` | `operaciones_bit::crearJugada` | `operaciones_bit.h` |
+| `getSalida()`, `getLlegada()` | `operaciones_bit::getSalida/getLlegada` | `operaciones_bit.h` |
+| `esJaque()` | `Tablero::esJaque` | `Tablero.h` |
+| `obtenerTipoDePieza()` | `Tablero::obtenerTipoDePieza` | `Tablero.h` |
+| `cantMovesGenerados`, `movimientos_generados` | Acceso directo a `Tablero` | - |
+
+#### Funciones de operaciones_bit más llamadas
+
+| Función | Frecuencia Estimada | Notas |
+|---------|---------------------|-------|
+| `LSB()` | Muy alta | Extraer bit menos significativo |
+| `setBit()` | Alta | Establecer bits en resultados |
+| `crearJugada()` | Alta | Crear estructuras de jugadas |
+
+### 13.5 Gestión de Memoria
+
+#### Asignaciones Dinámicas en Hot Path
+
+**Dama - Asignación por llamada:**
+
+```cpp
+// src/Dama.cpp líneas 17-22
+Alfil* alfil = new Alfil();
+Torre* torre = new Torre();
+movimientos = movimientos | alfil->generar_movimientos_legales(...);
+movimientos = movimientos | torre->generar_movimientos_legales(...);
+delete alfil;
+delete torre;
+```
+
+**Impacto:** Esta asignación ocurre cada vez que se genera un movimiento de Dama. En un motor de ajedrez, la generación de movimientos es una de las operaciones más frecuentes.
+
+**Comparación:**
+- Torre y Alfil: Constructores triviales (sin allocations)
+- Dama: 2 allocations + 2 deallocations por llamada
+
+#### Memory Padding y Alineación
+
+- `U64` es nativamente alineado en 8 bytes (sin padding adicional)
+- Las clases de pieza no tienen miembros de datos, solo vtable
+- No hay objetos pequeños que causen overhead significativo
+
+### 13.6 Observaciones de Código para Optimización
+
+#### 13.6.1 Código Muerto o Comentarizado
+
+| Archivo | Líneas | Descripción |
+|---------|--------|-------------|
+| `Peon.cpp` | 15-18, 64-459 | Código antiguo de movimientos legales comentado |
+| `Peon.cpp` | 506-566 | Función `hayCapturaAlPaso` antigua comentada |
+| `Caballo.cpp` | 78-91, 613-627 | Código de validación de jaque comentado |
+| `Peon.cpp` | múltiples | Verificaciones de `esJaque` comentadas |
+
+**Impacto:** El código comentrado no afecta el rendimiento directamente, pero indica funcionalidad incompleta o en transición.
+
+#### 13.6.2 Funcionalidad Incompleta
+
+| Feature | Estado | Notas |
+|---------|--------|-------|
+| Validación de jaque | Parcialmente comentada | Solo guarda jugadas sin validar |
+| Enroque (castling) | No implementado | Definido en enum pero no usado |
+| Promoción con jaque | Comentado | No se valida si la promoción da jaque |
+
+#### 13.6.3 Inconsistencias de Interfaz
+
+**Problema identificado:**
+
+| Pieza | Método retorna U64 | Método modifica Tablero |
+|-------|-------------------|-------------------------|
+| Caballo | ✓ `generar_movimientos_legales` | ✓ `obtener_movimientos` |
+| Rey | ✓ `generar_movimientos_legales` | ✓ `movimientos_legales` |
+| Torre | ✓ `generar_movimientos_legales` | ✗ |
+| Alfil | ✓ `generar_movimientos_legales` | ✗ |
+| Dama | ✓ `generar_movimientos_legales` | ✗ |
+| Peón | ✓ `generar_movimientos_legales` | ✓ `movimientos_legales` |
+
+Esta inconsistencia puede causar:
+- Duplicación de lógica
+- Dificultad para optimizaciones comunes
+
+### 13.7 Potenciales Cuellos de Botella
+
+#### Prioridad Alta
+
+1. **Asignaciones de memoria en Dama**
+   - Solución sugerida: Usar objetos estáticos o métodos estáticos
+
+2. **Iteración bit a bit en loops**
+   - `LSB()` llamada repetidamente
+   - Solución sugerida: Considerar precomputación o lookup tables
+
+3. **Validación de jaque deshabilitada**
+   - El código que genera movimientos no valida si deja al rey en jaque
+   - Esto puede generar movimientos ilegales
+
+#### Prioridad Media
+
+4. **Creación de bitboards temporales**
+   - `operaciones_bit::setBit(0L, casilla, 1)` llamado frecuentemente
+   - Solución: Considerar usar constantes precalculadas
+
+5. **Verificaciones redundantes de bordes**
+   - Cada función de movimiento verifica bordes individualmente
+   - Solución: Unificar verificaciones con masks compuestos
+
+#### Prioridad Baja
+
+6. **Parámetro `turno` no utilizado en sliding pieces**
+   - `generar_movimientos_legales` recibe `turno` pero no lo usa
+   - La Dama pasa `0` hardcodeado a Alfil/Torre
+
+### 13.8 Métricas de Código
+
+| Métrica | Valor |
+|---------|-------|
+| Total líneas (piezas) | ~1,500 |
+| Líneas de código activo | ~800 |
+| Líneas comentadas | ~700 |
+| Clases de piezas | 6 |
+| Funciones miembro totales | ~40 |
+| Funciones estáticas | ~25 |
+
+### 13.9 Recomendaciones para Optimización Futura
+
+1. **Eliminar allocations en Dama**: Usar instancia estática o métodos estáticos
+2. **Habilitar validación de jaque**: Completar la funcionalidad comentada
+3. **Unificar interfaces**: Estandolizar retorno U64 vs modificación de Tablero
+4. **Precomputar masks de ataque**: Usar attack tables para sliding pieces
+5. **Considerar SIMD**: Las operaciones bit son paralelizables
+6. **Inline functions críticas**: `LSB`, `setBit`, etc.
+
+---
+
 *Documento generado para facilitar el refactoring del sistema de piezas de ChessCPP.*

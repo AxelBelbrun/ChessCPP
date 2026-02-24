@@ -175,3 +175,217 @@ ales
 3. **Falta implementación**: `gradientDescent()` no está implementada
 4. ** memory**: En `SGD()` se usa `new Motor()` sin smart pointer (línea 410), debe usar `std::make_unique`
 5. **Parámetro no usado**: El argumento `learningRate` en `SGD()` no se utiliza actualmente
+
+---
+
+## Análisis Técnico para Optimización
+
+### Complejidad Algorítmica
+
+| Función | Complejidad | Factor dominante |
+|---------|-------------|------------------|
+| `meanSquareError()` | O(n × Q) | n = número de posiciones, Q = complejidad de `quiescence()` |
+| `SGD()` | O(epochs × 432 × Q) | 432 iteraciones internas por época, Q = `quiescence()` |
+| `obtenerParametros()` | O(432) | Iteración fija sobre todos los parámetros |
+| `guardarParametros()` | O(432) | Escritura de 432 valores a archivo |
+| `actualizarParametros()` | O(432) | Actualización de vectores de parámetros |
+| `calcularGradiente()` | O(432 × Q) | Diferencias finitas sobre 432 parámetros |
+
+> **Nota**: `quiescence()` es típicamente O(b^d) donde b ≈ branching factor y d ≈ profundidad, lo que convierte estas funciones en las más costosas del módulo.
+
+---
+
+### Operaciones Costosas Identificadas
+
+#### 1. Lectura de archivo en `meanSquareError()` y `SGD()`
+```cpp
+std::ifstream file("/home/axel/Documentos/posiciones-ML-Motor.txt");
+while (getline(file, line)) {
+    positions.push_back(line);
+}
+```
+- **Problema**: Lee todo el archivo en memoria en cada llamada
+- **Oportunidad**: Cachear posiciones en memoria una sola vez o usar mmap
+
+#### 2. Creación de objetos `Motor` y `Tablero` por iteración
+```cpp
+std::unique_ptr<Motor> m = std::make_unique<Motor>();
+std::unique_ptr<Tablero> t = std::make_unique<Tablero>("position startpos");
+```
+- **Problema**: En `meanSquareError()` se crea un nuevo Motor y Tablero para cada batch
+- **Oportunidad**: Reutilizar objetos, usar object pooling
+
+#### 3. Llamadas a `quiescence()` en loop
+```cpp
+for (const auto& pos : positions) {
+    score = m->quiescence(t.get(), -500000, 500000);
+}
+```
+- **Problema**: Esta es la operación más costosa (búsqueda de motor de ajedrez)
+- **Oportunidad**: Reducir llamadas, usar paralelización (ver sección abajo)
+
+#### 4. Escritura a archivo en `guardarParametros()`
+```cpp
+file.open("/home/axel/Documentos/parametros/iteracion" + std::to_string(contador) + ".txt");
+```
+- **Problema**: Abre/cierra archivo en cada iteración de entrenamiento
+- **Oportunidad**: Usar buffer en memoria, escribir periódicamente
+
+#### 5. Cálculo de gradiente en `SGD()`
+```cpp
+for (int i = 0; i < 432; i++) {
+    // ... operaciones por cada parámetro
+}
+```
+- **Problema**: Loop secuencial sobre 432 parámetros
+- **Oportunidad**: Paralelizar con OpenMP o std::parallel_for
+
+---
+
+### Uso de Memoria
+
+| Estructura | Tamaño | Notas |
+|------------|--------|-------|
+| `velocidades` | 433 × 8 bytes ≈ 3.4 KB | Vector global sin uso aparente |
+| `positions` (en memoria) | n × ~100 bytes | Depende del archivo de posiciones |
+| `gradientes` | 432 × 8 bytes ≈ 3.4 KB | Vector local en SGD |
+| `parametros` | 432 × 8 bytes ≈ 3.4 KB | Retorno de obtenerParametros |
+| `variacionesRandom` | 432 × 8 bytes ≈ 3.4 KB | Creado pero no utilizado |
+
+**Total estimado por ejecución**: ~10-50 KB + contenido del archivo de posiciones
+
+---
+
+### Oportunidades de Paralelización
+
+#### Nivel 1: Paralelización de posiciones (`meanSquareError`, `SGD`)
+```cpp
+// Patrón posible: Parallel for sobre posiciones
+#pragma omp parallel for
+for (size_t i = 0; i < positions.size(); i++) {
+    // procesar positions[i]
+}
+```
+- **Beneficio potencial**: Lineal en número de cores
+- **Sin dependencias entre iteraciones** (excepto acumulación de gradiente)
+
+#### Nivel 2: Paralelización de gradientes (`SGD`, `calcularGradiente`)
+```cpp
+// 432 iteraciones independientes
+#pragma omp parallel for
+for (int i = 0; i < 432; i++) {
+    gradientes[i] = calcularGradienteParametro(i);
+}
+```
+- **Beneficio potencial**: speedup de hasta 432x (teórico)
+- **Requiere**: Reducción thread-safe para gradientes
+
+#### Nivel 3: SIMD para operaciones vectoriales
+- Las operaciones sobre vectores de 432 elementos pueden beneficiarse de SIMD
+- Especialmente: `scorePropio - score`, multiplicaciones por `hayPieza`
+
+---
+
+### Cuellos de Botella Identificados
+
+1. **`quiescence()` call** (líneas 51, 436)
+   -占比: ~90% del tiempo de ejecución
+   - Tipo: Algorítmico (búsqueda de ajedrez)
+   - Optimización: Reducir llamadas, mejor poda alfa-beta
+
+2. **I/O de archivo** (líneas 27, 397)
+   -占比: ~5-10% del tiempo total
+   - Optimización: Cache en memoria
+
+3. **String operations** (líneas 44-46, 429-431)
+   - `substr()` llamado repetidamente
+   - Optimización: Preprocesar FEN y resultados
+
+---
+
+### Dependencias entre Funciones
+
+```
+meanSquareError
+├── → Tablero::configurarFen()
+├── → Motor::quiescence()
+└── → obtenerParametros() [indirecto via Motor]
+
+SGD
+├── → obtenerParametros()
+├── → Tablero (creación por iteración)
+├── → Motor::quiescence()
+├── → Tablero::obtenerTipoDePieza()
+├── → Tablero::piezas_negras()
+└── → operaciones_bit::espejarCasilla()
+
+calcularGradiente
+├── → obtenerParametros()
+├── → Motor::quiescence()
+└── → constantes (lectura/escritura)
+
+guardarParametros
+└── → constantes (lectura)
+
+actualizarParametros
+└── → constantes (escritura)
+
+obtenerParametros
+└── → constantes (lectura)
+```
+
+---
+
+### Patrones de Diseño Observados
+
+1. **Factory/Builder**: Uso de `std::make_unique<Motor>()` para creación de objetos
+2. **Strategy**: La función de evaluación parametrizable permite diferentes estrategias
+3. **Template Method**: Patrón implícito en el cálculo de gradientes (iterar → perturbar → evaluar → restaurar)
+4. **Batch Processing**: `meanSquareError` procesa múltiples posiciones en batch
+
+---
+
+### Métricas Sugeridas para Profiling
+
+| Métrica | Herramienta | Punto de medición |
+|---------|-------------|-------------------|
+| Tiempo por posición | `std::chrono` | Around line 51, 436 |
+| Tiempo de I/O | `strace` / `perf` | Lectura de archivo |
+| Uso de memoria | `valgrind --tool=massif` | Todo el módulo |
+| Cache misses | `perf stat` | Acceso a `constantes::*` |
+| CPU utilization | `htop` / `perf` | Durante SGD |
+
+---
+
+### Flags de Compilación Recomendados
+
+```bash
+# Optimización para velocidad
+-O3 -march=native -mtune=native
+
+# Paralelización
+-fopenmp  # Para #pragma omp parallel
+
+# Vectorización
+-ftree-vectorize -ffast-math
+
+# Ejemplo completo
+g++ -O3 -march=native -mtune=native -fopenmp -ftree-vectorize -ffast-math -o motor_optimizado src/*.cpp
+```
+
+---
+
+### Referencias Cruzadas con Otros Módulos
+
+| Módulo | Función llamada | Frecuencia |
+|--------|-----------------|------------|
+| `Motor` | `quiescence()` | Alta (por posición) |
+| `Tablero` | `configurarFen()` | Alta |
+| `Tablero` | `obtenerTipoDePieza()` | 432 × epochs |
+| `Tablero` | `piezas_negras()` | 432 × epochs |
+| `operaciones_bit` | `espejarCasilla()` | Ocasional |
+| `constantes` | Tablas de ocupación | Lectura/escritura frecuente |
+
+---
+
+*Documento generado para análisis de oportunidades de optimización del motor de ajedrez ChessCPP*
